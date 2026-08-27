@@ -51,20 +51,16 @@
   }
 
   function getNeofetchOutput() {
-    return `            .---.            OS: Ubuntu 22.04 LTS x86_64
-           /     \\           Host: cPanel Local Server v1.0
-          \\\\.@ @.//          Kernel: 5.15.0-88-generic
-          /  \\_/  \\          Uptime: 5 days, 12 hours, 30 mins
-         //   _   \\\\         Packages: 842 (dpkg)
-        //|   |   |\\\\        Shell: bash 5.1.16
-       // |===|===| \\\\       Terminal: WebTerminal (Svelte)
-      /   |   |   |   \\      CPU: Intel Xeon E5-2670 v3 (8) @ 2.300GHz
-     /    |===|===|    \\     GPU: Intel Haswell-E GT2
-    /     |   |   |     \\    Memory: 3440MiB / 8192MiB (42%)
-   |      |===|===|      |   Docker: Version 24.0.7
-   |      |   |   |      |   
-   \\_____________________/   ---------------------------
-                             Red/Green/Blue/Purple Dashboard UI`;
+    return `               ##         .              OS: Ubuntu 22.04 LTS x86_64
+         ## ## ##        ==              Host: cPanel Server Local
+      ## ## ## ## ##    ===              Kernel: Linux 6.5.0-generic
+  /"""""\\___/"""\\___/""\\___/            Uptime: 4 days, 18 hours
+ ~~~~~~~ {~~ ~~~~ ~~~ ~~~~ ~~~ ~~~       Shell: bash 5.1.16
+  \\___________________________/          Terminal: WebTerminal (Svelte)
+                                         CPU: 8 vCPUs @ 3.20GHz
+                                         RAM: 4096MiB / 16384MiB (25%)
+                                         Docker Engine: v24.0.7 (Community)
+                                         Containers: ${containers.length} total (${containers.filter(c => c.State === 'running').length} running)`;
   }
 
   async function handleCommandSubmit() {
