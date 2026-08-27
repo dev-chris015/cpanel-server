@@ -1,5 +1,19 @@
 <script>
   import { onMount } from 'svelte';
+  import { 
+    Server, 
+    Rocket, 
+    Package, 
+    RefreshCw, 
+    AlertTriangle, 
+    CheckCircle2, 
+    XCircle, 
+    Box, 
+    Globe, 
+    Layers,
+    Cpu,
+    Loader2
+  } from 'lucide-svelte';
 
   let containers = [];
   let loading = true;
@@ -76,11 +90,14 @@
 <main class="app-container">
   <header class="navbar">
     <div class="brand">
-      <div class="logo-icon">⚡</div>
+      <div class="logo-icon">
+        <Server size={24} color="#ffffff" />
+      </div>
       <h1>cPanel Server Control</h1>
     </div>
     <div class="status-pill">
       <span class="dot"></span>
+      <Cpu size={14} class="icon-inline" />
       Docker API Connected
     </div>
   </header>
@@ -88,12 +105,17 @@
   <div class="dashboard-grid">
     <!-- Panel de Despliegue -->
     <section class="card deploy-card">
-      <h2>🚀 Desplegar Nuevo Contenedor</h2>
+      <div class="card-title-group">
+        <Rocket class="card-icon" size={22} color="#3b82f6" />
+        <h2>Desplegar Nuevo Contenedor</h2>
+      </div>
       <p class="subtitle">Descarga una imagen de Docker Registry y levanta el servicio al instante.</p>
 
       <form on:submit|preventDefault={handleDeploy} class="deploy-form">
         <div class="form-group">
-          <label for="image">Imagen Docker</label>
+          <label for="image">
+            <Layers size={14} class="label-icon" /> Imagen Docker
+          </label>
           <input 
             id="image" 
             type="text" 
@@ -104,7 +126,9 @@
         </div>
 
         <div class="form-group">
-          <label for="name">Nombre del Contenedor (Opcional)</label>
+          <label for="name">
+            <Box size={14} class="label-icon" /> Nombre del Contenedor (Opcional)
+          </label>
           <input 
             id="name" 
             type="text" 
@@ -115,7 +139,9 @@
 
         <div class="form-row">
           <div class="form-group">
-            <label for="hostPort">Puerto Host</label>
+            <label for="hostPort">
+              <Globe size={14} class="label-icon" /> Puerto Host
+            </label>
             <input 
               id="hostPort" 
               type="number" 
@@ -124,7 +150,9 @@
             />
           </div>
           <div class="form-group">
-            <label for="containerPort">Puerto Contenedor</label>
+            <label for="containerPort">
+              <Server size={14} class="label-icon" /> Puerto Contenedor
+            </label>
             <input 
               id="containerPort" 
               type="number" 
@@ -136,16 +164,21 @@
 
         <button type="submit" class="btn-primary" disabled={isDeploying}>
           {#if isDeploying}
-            <span class="spinner"></span> Desplegando...
+            <Loader2 size={18} class="spin" /> Desplegando...
           {:else}
-            Desplegar Contenedor
+            <Rocket size={18} /> Desplegar Contenedor
           {/if}
         </button>
       </form>
 
       {#if deployMessage}
         <div class="deploy-alert" class:error={deployMessage.includes('❌')}>
-          {deployMessage}
+          {#if deployMessage.includes('❌')}
+            <XCircle size={18} />
+          {:else}
+            <CheckCircle2 size={18} />
+          {/if}
+          <span>{deployMessage.replace(/^[🚀❌]\s*/, '')}</span>
         </div>
       {/if}
     </section>
@@ -153,23 +186,29 @@
     <!-- Lista de Contenedores -->
     <section class="card list-card">
       <div class="card-header">
-        <h2>📦 Contenedores en Ejecución</h2>
+        <div class="card-title-group">
+          <Package class="card-icon" size={22} color="#8b5cf6" />
+          <h2>Contenedores en Ejecución</h2>
+        </div>
         <button class="btn-refresh" on:click={fetchContainers} title="Actualizar lista">
-          🔄 Actualizar
+          <RefreshCw size={14} class={loading ? 'spin' : ''} />
+          Actualizar
         </button>
       </div>
 
       {#if loading}
         <div class="loading-state">
-          <div class="spinner-large"></div>
+          <Loader2 size={36} class="spin text-blue" />
           <p>Cargando contenedores desde Docker...</p>
         </div>
       {:else if error}
         <div class="error-banner">
-          ⚠️ {error}
+          <AlertTriangle size={20} />
+          <span>{error}</span>
         </div>
       {:else if containers.length === 0}
         <div class="empty-state">
+          <Box size={40} class="empty-icon" />
           <p>No hay contenedores corriendo actualmente.</p>
         </div>
       {:else}
@@ -306,16 +345,22 @@
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
   }
 
+  .card-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
   h2 {
     font-size: 1.2rem;
-    margin: 0 0 0.5rem 0;
+    margin: 0;
     color: #f1f5f9;
   }
 
   .subtitle {
     font-size: 0.85rem;
     color: #94a3b8;
-    margin: 0 0 1.5rem 0;
+    margin: 0.5rem 0 1.5rem 0;
   }
 
   .deploy-form {
@@ -342,6 +387,9 @@
     color: #cbd5e1;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
   }
 
   input {
@@ -394,6 +442,9 @@
     font-size: 0.85rem;
     cursor: pointer;
     transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
   }
 
   .btn-refresh:hover {
@@ -402,13 +453,16 @@
 
   .deploy-alert {
     margin-top: 1rem;
-    padding: 0.8rem;
+    padding: 0.8rem 1rem;
     background: rgba(34, 197, 94, 0.15);
     border: 1px solid rgba(34, 197, 94, 0.3);
     border-radius: 8px;
     color: #4ade80;
     font-size: 0.85rem;
     word-break: break-word;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
   }
 
   .deploy-alert.error {
@@ -488,6 +542,7 @@
     align-items: center;
     padding: 3rem 1rem;
     color: #94a3b8;
+    gap: 0.5rem;
   }
 
   .error-banner {
@@ -496,25 +551,22 @@
     color: #f87171;
     padding: 1rem;
     border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
   }
 
-  .spinner {
-    width: 14px;
-    height: 14px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+  :global(.spin) {
+    animation: spin 1s linear infinite;
   }
 
-  .spinner-large {
-    width: 32px;
-    height: 32px;
-    border: 3px solid rgba(255,255,255,0.1);
-    border-top-color: #3b82f6;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin-bottom: 1rem;
+  :global(.text-blue) {
+    color: #3b82f6;
+  }
+
+  :global(.empty-icon) {
+    color: #475569;
+    margin-bottom: 0.5rem;
   }
 
   @keyframes spin {
