@@ -57,29 +57,28 @@
       />
     </div>
 
-    <div class="form-row">
-      <div class="input-group">
-        <div class="input-icon">
-          <Globe size={16} />
-        </div>
-        <input 
-          id="hostPort" 
-          type="number" 
-          bind:value={hostPort} 
-          placeholder="Puerto Host (8080)" 
-        />
+    <div class="input-group">
+      <div class="input-icon">
+        <Globe size={16} />
       </div>
-      <div class="input-group">
-        <div class="input-icon">
-          <Server size={16} />
-        </div>
-        <input 
-          id="containerPort" 
-          type="number" 
-          bind:value={containerPort} 
-          placeholder="Puerto Contenedor (80)" 
-        />
+      <input 
+        id="hostPort" 
+        type="number" 
+        bind:value={hostPort} 
+        placeholder="Puerto Host (8080)" 
+      />
+    </div>
+    
+    <div class="input-group">
+      <div class="input-icon">
+        <Server size={16} />
       </div>
+      <input 
+        id="containerPort" 
+        type="number" 
+        bind:value={containerPort} 
+        placeholder="Puerto Contenedor (80)" 
+      />
     </div>
 
     <button type="submit" class="btn-gradient" disabled={isDeploying}>
@@ -156,9 +155,10 @@
 
   /* Form & Inputs */
   .deploy-form {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 1.25rem;
+    align-items: start;
   }
 
   .input-group {
@@ -207,18 +207,24 @@
     color: #475569;
   }
 
-  .form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+  /* Remove spin buttons from number inputs */
+  .input-group input[type="number"]::-webkit-inner-spin-button,
+  .input-group input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
   }
+  .input-group input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+
 
   /* Buttons */
   .btn-gradient {
     background: var(--primary);
     color: white;
     border: none;
-    padding: 1rem;
+    padding: 0.9rem 1rem;
     border-radius: 12px;
     font-weight: 600;
     font-size: 1rem;
@@ -229,7 +235,8 @@
     gap: 0.5rem;
     transition: all 0.2s ease;
     box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
-    margin-top: 0.5rem;
+    height: 100%;
+    min-height: 48px;
   }
 
   .btn-gradient:hover:not(:disabled) {

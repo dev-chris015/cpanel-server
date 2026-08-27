@@ -42,8 +42,8 @@
 
 <style>
   .containers-grid {
-    display: grid;
-    grid-template-columns: 380px 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 2rem;
   }
 
