@@ -105,11 +105,6 @@
 </script>
 
 <div class="layout">
-  <!-- Mesh background -->
-  <div class="mesh-bg"></div>
-  <div class="mesh-blob blob-1"></div>
-  <div class="mesh-blob blob-2"></div>
-
   <!-- Mobile Toggle -->
   <button class="mobile-toggle" on:click={toggleSidebar}>
     <Menu size={24} />
@@ -222,90 +217,9 @@
     z-index: 1;
   }
 
-  /* Background Mesh and Blobs */
-  .mesh-bg {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: 
-      radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
-      radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.08) 0%, transparent 50%);
-    z-index: -2;
-  }
-
-  .mesh-blob {
-    position: fixed;
-    border-radius: 50%;
-    filter: blur(80px);
-    z-index: -1;
-    opacity: 0.5;
-    animation: float 20s infinite ease-in-out alternate;
-  }
-
-  .blob-1 {
-    top: -10%; left: -10%;
-    width: 500px; height: 500px;
-    background: rgba(37, 99, 235, 0.15);
-  }
-
-  .blob-2 {
-    bottom: -10%; right: -5%;
-    width: 600px; height: 600px;
-    background: rgba(124, 58, 237, 0.15);
-    animation-delay: -10s;
-  }
-
-  @keyframes float {
-    0% { transform: translate(0, 0) scale(1); }
-    100% { transform: translate(30px, 50px) scale(1.1); }
-  }
-
-  /* Main Content Area */
-  .main-content {
-    flex: 1;
-    padding: 2rem 3rem;
-    max-height: 100vh;
-    overflow-y: auto;
-  }
-
-  .topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    margin-bottom: 2.5rem;
-  }
-
-  .topbar h1 {
-    font-size: 2rem;
-    margin: 0 0 0.25rem 0;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-  }
-
-  .text-muted {
-    color: var(--text-muted);
-    margin: 0;
-    font-size: 0.95rem;
-  }
-
-  .user-profile {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 1rem;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--card-border);
-    border-radius: 50px;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .user-profile:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
   .avatar {
     width: 32px; height: 32px;
-    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    background: var(--primary);
     border-radius: 50%;
     display: flex;
     align-items: center;

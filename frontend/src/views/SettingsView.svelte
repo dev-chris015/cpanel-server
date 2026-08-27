@@ -551,9 +551,7 @@
   }
 
   .text-gradient {
-    background: linear-gradient(90deg, #60a5fa, #c084fc);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--primary);
     font-weight: 700;
   }
 

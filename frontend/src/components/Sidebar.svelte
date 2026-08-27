@@ -19,7 +19,7 @@
       <div class="logo-icon-bg">
         <Server size={22} color="#ffffff" />
       </div>
-      <h2>cPanel <span class="text-gradient">Pro</span></h2>
+      <h2>cPanel</h2>
     </div>
   </div>
 
@@ -89,25 +89,19 @@
   }
 
   .logo-icon-bg {
-    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    background: var(--primary);
     width: 36px; height: 36px;
     border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
   }
 
   .logo h2 {
     font-size: 1.25rem;
     font-weight: 700;
     margin: 0;
-  }
-
-  .text-gradient {
-    background: linear-gradient(90deg, #60a5fa, #c084fc);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
   }
 
   .sidebar-nav {
