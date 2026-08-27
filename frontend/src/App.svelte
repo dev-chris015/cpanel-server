@@ -217,6 +217,50 @@
     z-index: 1;
   }
 
+  /* Main Content Area */
+  .main-content {
+    flex: 1;
+    padding: 2rem 3rem;
+    max-height: 100vh;
+    overflow-y: auto;
+  }
+
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 2.5rem;
+  }
+
+  .topbar h1 {
+    font-size: 2rem;
+    margin: 0 0 0.25rem 0;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .text-muted {
+    color: var(--text-muted);
+    margin: 0;
+    font-size: 0.95rem;
+  }
+
+  .user-profile {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--card-border);
+    border-radius: 50px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .user-profile:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
   .avatar {
     width: 32px; height: 32px;
     background: var(--primary);
