@@ -1,3 +1,4 @@
 #modulos
 node_modules
 .vscode
+frontend/dist
