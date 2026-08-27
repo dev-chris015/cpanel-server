@@ -346,31 +346,7 @@
     color: var(--text-main);
   }
 
-  .input-prefix-wrapper {
-    display: flex;
-    align-items: center;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--card-border);
-    border-radius: 10px;
-    overflow: hidden;
-  }
 
-  .prefix-label {
-    padding: 0 0.75rem;
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    border-right: 1px solid var(--card-border);
-    user-select: none;
-  }
-
-  .input-prefix-wrapper input {
-    flex: 1;
-    border: none !important;
-    background: transparent !important;
-    padding: 0.75rem !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-  }
 
   input[type="text"] {
     width: 100%;

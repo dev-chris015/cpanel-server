@@ -268,6 +268,7 @@
         <div class="line prompt-line input-line">
           <span class="prompt-symbol">{selectedContainer ? 'container' : 'cpanel-server'} ~ $</span>
           <form on:submit|preventDefault={handleCommandSubmit} class="cmd-form">
+            <!-- svelte-ignore a11y-autofocus -->
             <input 
               type="text" 
               bind:value={commandInput} 
