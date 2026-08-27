@@ -9,7 +9,12 @@
   export let containers = [];
   export let fetchContainers;
 
-  const API_BASE = 'http://localhost:5000/api';
+  let API_BASE = 'http://localhost:5000/api';
+  
+  import { onMount } from 'svelte';
+  onMount(() => {
+    API_BASE = localStorage.getItem('apiBaseUrl') || 'http://localhost:5000/api';
+  });
 
   let actionLoading = {}; 
 

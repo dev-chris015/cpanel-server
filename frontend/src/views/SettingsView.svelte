@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte';
   import { 
     Settings, 
     Sliders, 
@@ -6,41 +7,66 @@
     Info, 
     Check, 
     AlertCircle, 
-    RefreshCw
+    RefreshCw,
+    Moon,
+    Sun
   } from 'lucide-svelte';
 
   // State configurations
-  let backendPort = '5000';
+  let backendUrl = 'http://localhost:5000/api';
   let dockerSocket = '/var/run/docker.sock';
   let autoRefresh = true;
   let refreshInterval = '5'; // seconds
   let notifyOnDeploy = true;
   let autoPrune = false;
+  let theme = 'dark';
   
   let successMessage = '';
   let errorMessage = '';
   let isSaving = false;
+
+  onMount(() => {
+    backendUrl = localStorage.getItem('apiBaseUrl') || 'http://localhost:5000/api';
+    dockerSocket = localStorage.getItem('dockerSocket') || '/var/run/docker.sock';
+    autoRefresh = localStorage.getItem('autoRefresh') !== 'false';
+    refreshInterval = localStorage.getItem('refreshInterval') || '5';
+    notifyOnDeploy = localStorage.getItem('notifyOnDeploy') !== 'false';
+    autoPrune = localStorage.getItem('autoPrune') === 'true';
+    theme = localStorage.getItem('theme') || 'dark';
+  });
 
   function handleSaveSettings() {
     isSaving = true;
     successMessage = '';
     errorMessage = '';
     
-    // Simulate API saving
+    localStorage.setItem('apiBaseUrl', backendUrl);
+    localStorage.setItem('dockerSocket', dockerSocket);
+    localStorage.setItem('autoRefresh', autoRefresh);
+    localStorage.setItem('refreshInterval', refreshInterval);
+    localStorage.setItem('notifyOnDeploy', notifyOnDeploy);
+    localStorage.setItem('autoPrune', autoPrune);
+    localStorage.setItem('theme', theme);
+    
+    document.body.className = theme === 'light' ? 'theme-light' : '';
+
     setTimeout(() => {
       isSaving = false;
-      successMessage = 'Configuración guardada exitosamente en el localStorage.';
+      successMessage = 'Configuración guardada exitosamente. Recarga la página para aplicar la URL de API.';
     }, 800);
   }
 
   function handleReset() {
-    backendPort = '5000';
+    backendUrl = 'http://localhost:5000/api';
     dockerSocket = '/var/run/docker.sock';
     autoRefresh = true;
     refreshInterval = '5';
     notifyOnDeploy = true;
     autoPrune = false;
-    successMessage = 'Ajustes restablecidos a los valores por defecto.';
+    theme = 'dark';
+    
+    document.body.className = '';
+    successMessage = 'Ajustes restablecidos. Guarda los cambios si deseas mantenerlos.';
   }
 </script>
 
@@ -60,17 +86,14 @@
 
       <form on:submit|preventDefault={handleSaveSettings} class="settings-form">
         <div class="form-group">
-          <label for="backend-port">Puerto Backend (Express API)</label>
-          <div class="input-prefix-wrapper">
-            <span class="prefix-label">http://localhost:</span>
-            <input 
-              type="text" 
-              id="backend-port" 
-              bind:value={backendPort} 
-              placeholder="5000" 
-            />
-          </div>
-          <span class="field-desc">El puerto en el cual está escuchando tu API express local.</span>
+          <label for="backend-url">URL del Backend (API)</label>
+          <input 
+            type="text" 
+            id="backend-url" 
+            bind:value={backendUrl} 
+            placeholder="http://localhost:5000/api" 
+          />
+          <span class="field-desc">La URL base de tu backend (ej. http://192.168.1.50:5000/api).</span>
         </div>
 
         <div class="form-group">
@@ -120,6 +143,26 @@
         </div>
 
         <div class="toggles-list">
+          
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-title font-semibold">Tema de Interfaz</span>
+              <p class="text-muted text-sm">Elige entre Modo Oscuro y Claro.</p>
+            </div>
+            <div class="theme-selector">
+              <button 
+                class="theme-btn {theme === 'dark' ? 'active' : ''}" 
+                on:click={() => theme = 'dark'}>
+                <Moon size={16} /> Oscuro
+              </button>
+              <button 
+                class="theme-btn {theme === 'light' ? 'active' : ''}" 
+                on:click={() => theme = 'light'}>
+                <Sun size={16} /> Claro
+              </button>
+            </div>
+          </div>
+
           <div class="toggle-row">
             <div class="toggle-info">
               <span class="toggle-title font-semibold">Refresco Automático</span>
@@ -563,5 +606,37 @@
   @keyframes slideIn {
     from { opacity: 0; transform: translateY(-5px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+
+  .theme-selector {
+    display: flex;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    padding: 0.25rem;
+    border: 1px solid var(--card-border);
+  }
+
+  .theme-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+
+  .theme-btn:hover {
+    color: var(--text-main);
+  }
+
+  .theme-btn.active {
+    background: var(--primary);
+    color: white;
   }
 </style>

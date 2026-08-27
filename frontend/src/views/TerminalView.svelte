@@ -75,7 +75,8 @@
     if (selectedContainer) {
       // Execute command in container via API
       try {
-        const res = await fetch(`http://localhost:5000/api/containers/${selectedContainer}/exec`, {
+        const apiBase = localStorage.getItem('apiBaseUrl') || 'http://localhost:5000/api';
+        const res = await fetch(`${apiBase}/containers/${selectedContainer}/exec`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ command: cmd })
@@ -160,7 +161,8 @@
     if (!selectedContainer) return;
     
     logsData = [{ type: 'system', text: `Conectando al stream de logs de ${selectedContainer}...` }];
-    logSource = new EventSource(`http://localhost:5000/api/containers/${selectedContainer}/logs/stream`);
+    const apiBase = localStorage.getItem('apiBaseUrl') || 'http://localhost:5000/api';
+    logSource = new EventSource(`${apiBase}/containers/${selectedContainer}/logs/stream`);
     
     logSource.onmessage = (event) => {
       try {

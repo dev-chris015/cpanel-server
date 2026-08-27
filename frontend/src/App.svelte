@@ -25,7 +25,7 @@
   let deployMessage = '';
   let deployIsError = false;
 
-  const API_BASE = 'http://localhost:5000/api';
+  let API_BASE = 'http://localhost:5000/api';
 
   // Reactive view titles and subtitles
   $: viewInfo = {
@@ -97,6 +97,9 @@
   }
 
   onMount(() => {
+    API_BASE = localStorage.getItem('apiBaseUrl') || 'http://localhost:5000/api';
+    const theme = localStorage.getItem('theme') || 'dark';
+    document.body.className = theme === 'light' ? 'theme-light' : '';
     fetchContainers();
   });
 </script>
@@ -189,6 +192,25 @@
     color: var(--text-main);
     min-height: 100vh;
     overflow-x: hidden;
+  }
+
+  /* Theme support */
+  :global(body.theme-light) {
+    --bg-dark: #f1f5f9;
+    --sidebar-bg: rgba(255, 255, 255, 0.8);
+    --card-bg: rgba(255, 255, 255, 0.9);
+    --card-border: rgba(0, 0, 0, 0.1);
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+  }
+  
+  :global(body.theme-light .mesh-bg) {
+    opacity: 0.5;
+  }
+  
+  :global(body.theme-light .user-profile) {
+    background: rgba(0,0,0,0.05);
+    border: 1px solid rgba(0,0,0,0.1);
   }
 
   /* Utils & Animations - globally available */
