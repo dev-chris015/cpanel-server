@@ -12,6 +12,7 @@
 
   export let isDeploying = false;
   export let deployMessage = '';
+  export let deployIsError = false;
   export let handleDeploy;
   export let imageName = '';
   export let containerName = '';
@@ -91,13 +92,13 @@
   </form>
 
   {#if deployMessage}
-    <div class="alert" class:error={deployMessage.includes('❌')}>
-      {#if deployMessage.includes('❌')}
+    <div class="alert" class:error={deployIsError}>
+      {#if deployIsError}
         <XCircle size={18} />
       {:else}
         <CheckCircle2 size={18} />
       {/if}
-      <span>{deployMessage.replace(/^[🚀❌]\s*/, '')}</span>
+      <span>{deployMessage}</span>
     </div>
   {/if}
 </section>

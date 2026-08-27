@@ -18,6 +18,7 @@
   let hostPort = '';
   let containerPort = '';
   let deployMessage = '';
+  let deployIsError = false;
 
   const API_BASE = 'http://localhost:5000/api';
 
@@ -43,6 +44,7 @@
     if (!imageName.trim()) return;
     isDeploying = true;
     deployMessage = '';
+    deployIsError = false;
     try {
       const payload = {
         image: imageName.trim(),
@@ -58,17 +60,20 @@
 
       const json = await res.json();
       if (json.success) {
-        deployMessage = `🚀 ¡Despliegue exitoso! ID: ${json.data.id.substring(0, 12)}`;
+        deployMessage = `¡Despliegue exitoso! ID: ${json.data.id.substring(0, 12)}`;
+        deployIsError = false;
         imageName = '';
         containerName = '';
         hostPort = '';
         containerPort = '';
         await fetchContainers();
       } else {
-        deployMessage = `❌ Error: ${json.error} - ${json.details || ''}`;
+        deployMessage = `Error: ${json.error} - ${json.details || ''}`;
+        deployIsError = true;
       }
     } catch (err) {
-      deployMessage = `❌ Error al conectar con el backend: ${err.message}`;
+      deployMessage = `Error al conectar con el backend: ${err.message}`;
+      deployIsError = true;
     } finally {
       isDeploying = false;
     }
@@ -118,6 +123,7 @@
         bind:containerPort 
         {isDeploying}
         {deployMessage}
+        {deployIsError}
         {handleDeploy}
       />
 
