@@ -129,7 +129,17 @@
     </header>
 
     {#if activeTab === 'dashboard'}
-      <DashboardView {containers} />
+      <DashboardView 
+        {containers}
+        bind:imageName
+        bind:containerName
+        bind:hostPort
+        bind:containerPort
+        {isDeploying}
+        {deployMessage}
+        {deployIsError}
+        {handleDeploy}
+      />
     {:else if activeTab === 'containers'}
       <ContainersView 
         {containers}

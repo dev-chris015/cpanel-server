@@ -3,22 +3,37 @@
     Cpu, 
     Database, 
     Box, 
-    Activity, 
-    Server, 
-    TrendingUp, 
-    CheckCircle2 
+    Clock,
+    Play,
+    Square
   } from 'lucide-svelte';
+  import DeployCard from '../components/DeployCard.svelte';
 
   export let containers = [];
 
-  // Mock server statistics for Phase 1
+  // Deploy props from App.svelte
+  export let imageName = '';
+  export let containerName = '';
+  export let hostPort = '';
+  export let containerPort = '';
+  export let isDeploying = false;
+  export let deployMessage = '';
+  export let deployIsError = false;
+  export let handleDeploy;
+
+  // Mock server statistics for Phase 2
   let cpuUsage = 14;
   let ramUsage = 42; // percentage
-  let diskUsage = 28; // percentage
-  let systemUptime = "5d 12h 30m";
+
+  $: runningCount = containers.filter(c => c.State === 'running').length;
+  $: stoppedCount = containers.filter(c => c.State !== 'running').length;
+  
+  // Get up to 4 recent containers for quick access shortcuts
+  $: recentContainers = [...containers].slice(0, 4);
 </script>
 
 <div class="view-container">
+  <!-- Metrics Widget -->
   <div class="stats-grid">
     <!-- CPU Card -->
     <div class="glass-card stat-card">
@@ -26,14 +41,14 @@
         <div class="icon-wrapper blue">
           <Cpu size={20} />
         </div>
-        <span class="stat-title">Uso de CPU</span>
+        <span class="stat-title">Uso de CPU (Docker)</span>
       </div>
       <div class="stat-value">{cpuUsage}%</div>
       <div class="progress-bar-container">
         <div class="progress-bar blue" style="width: {cpuUsage}%"></div>
       </div>
       <div class="stat-footer text-muted">
-        <span>4 Cores / 8 Threads</span>
+        <span>Estimado del daemon</span>
       </div>
     </div>
 
@@ -43,117 +58,86 @@
         <div class="icon-wrapper purple">
           <Database size={20} />
         </div>
-        <span class="stat-title">Memoria RAM</span>
+        <span class="stat-title">Memoria RAM (Docker)</span>
       </div>
       <div class="stat-value">{ramUsage}%</div>
       <div class="progress-bar-container">
         <div class="progress-bar purple" style="width: {ramUsage}%"></div>
       </div>
       <div class="stat-footer text-muted">
-        <span>3.36 GB / 8.00 GB</span>
+        <span>3.36 GB asignados</span>
       </div>
     </div>
 
-    <!-- Disk Card -->
-    <div class="glass-card stat-card">
-      <div class="stat-header">
-        <div class="icon-wrapper orange">
-          <Server size={20} />
-        </div>
-        <span class="stat-title">Almacenamiento</span>
-      </div>
-      <div class="stat-value">{diskUsage}%</div>
-      <div class="progress-bar-container">
-        <div class="progress-bar orange" style="width: {diskUsage}%"></div>
-      </div>
-      <div class="stat-footer text-muted">
-        <span>33.6 GB / 120 GB libres</span>
-      </div>
-    </div>
-
-    <!-- Active Containers Card -->
+    <!-- Active Containers Breakdown Card -->
     <div class="glass-card stat-card">
       <div class="stat-header">
         <div class="icon-wrapper green">
           <Box size={20} />
         </div>
-        <span class="stat-title">Contenedores</span>
+        <span class="stat-title">Contenedores Totales</span>
       </div>
       <div class="stat-value">{containers.length}</div>
-      <div class="progress-bar-container">
-        <div class="progress-bar green" style="width: {containers.length > 0 ? Math.min(containers.length * 10, 100) : 0}%"></div>
+      <div class="status-bars">
+        <div class="bar-segment running" style="flex: {runningCount || 1}" title="{runningCount} Running"></div>
+        <div class="bar-segment stopped" style="flex: {stoppedCount || (containers.length === 0 ? 1 : 0)}" title="{stoppedCount} Stopped"></div>
       </div>
       <div class="stat-footer text-muted">
-        <span>{containers.filter(c => c.State === 'running').length} activos en ejecución</span>
+        <span class="text-green font-semibold">{runningCount} corriendo</span> | 
+        <span class="text-orange font-semibold">{stoppedCount} detenidos</span>
       </div>
     </div>
   </div>
 
-  <div class="info-grid">
-    <!-- Server Status Info -->
-    <div class="glass-card info-card">
-      <div class="card-header-styled">
-        <div class="icon-wrapper green">
-          <Activity size={20} />
-        </div>
-        <div>
-          <h3>Estado del Servidor</h3>
-          <p class="subtitle">Información del sistema local.</p>
-        </div>
-      </div>
-      <div class="details-list">
-        <div class="details-row">
-          <span class="label text-muted">Tiempo de Actividad (Uptime)</span>
-          <span class="value font-semibold">{systemUptime}</span>
-        </div>
-        <div class="details-row">
-          <span class="label text-muted">SO Host</span>
-          <span class="value font-semibold">Linux Ubuntu 22.04 LTS</span>
-        </div>
-        <div class="details-row">
-          <span class="label text-muted">Versión de Docker</span>
-          <span class="value font-semibold">24.0.7</span>
-        </div>
-        <div class="details-row">
-          <span class="label text-muted">Dirección IP Local</span>
-          <span class="value font-mono">192.168.1.150</span>
-        </div>
-      </div>
+  <div class="dashboard-content-grid">
+    <!-- Quick Deploy Section Widget -->
+    <div class="deploy-section">
+      <DeployCard 
+        bind:imageName 
+        bind:containerName 
+        bind:hostPort 
+        bind:containerPort 
+        {isDeploying}
+        {deployMessage}
+        {deployIsError}
+        {handleDeploy}
+      />
     </div>
 
-    <!-- Docker Health -->
-    <div class="glass-card info-card">
+    <!-- Recent Containers Shortcuts Widget -->
+    <div class="glass-card recent-card">
       <div class="card-header-styled">
-        <div class="icon-wrapper blue">
-          <TrendingUp size={20} />
+        <div class="icon-wrapper orange">
+          <Clock size={20} />
         </div>
         <div>
-          <h3>Rendimiento y Diagnósticos</h3>
-          <p class="subtitle">Estado del demonio de Docker.</p>
+          <h3>Accesos Directos</h3>
+          <p class="subtitle">Contenedores recientes</p>
         </div>
       </div>
-      <div class="status-summary">
-        <div class="health-indicator">
-          <CheckCircle2 size={36} class="text-green animate-pulse" />
-          <div>
-            <h4 class="font-semibold">Docker está Saludable</h4>
-            <p class="text-muted text-sm">El daemon responde correctamente en /var/run/docker.sock</p>
+      <div class="recent-list">
+        {#if recentContainers.length === 0}
+          <div class="empty-state">
+            <Box size={32} class="text-muted" />
+            <p class="text-muted">No hay contenedores recientes.</p>
           </div>
-        </div>
-        <div class="stats-pills-row">
-          <div class="stat-pill-mini">
-            <span class="text-muted">Redes Docker</span>
-            <span class="badge blue">4</span>
-          </div>
-          <div class="stat-pill-mini">
-            <span class="text-muted">Volúmenes</span>
-            <span class="badge purple">7</span>
-          </div>
-          <div class="stat-pill-mini">
-            <span class="text-muted">Imágenes</span>
-            <span class="badge orange">12</span>
-          </div>
-        </div>
+        {:else}
+          {#each recentContainers as rc}
+            <div class="recent-item">
+              <div class="item-info">
+                <span class="item-name">{rc.Names ? rc.Names.join(', ').replace(/^\//, '') : rc.Id.substring(0, 8)}</span>
+                <span class="item-image text-muted">{rc.Image}</span>
+              </div>
+              <div class="item-actions">
+                {#if rc.State === 'running'}
+                  <button class="btn-action stop" title="Detener (Mock)"><Square size={16}/></button>
+                {:else}
+                  <button class="btn-action start" title="Iniciar (Mock)"><Play size={16}/></button>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        {/if}
       </div>
     </div>
   </div>
@@ -173,14 +157,14 @@
     gap: 1.5rem;
   }
 
-  .info-grid {
+  .dashboard-content-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 380px 1fr;
     gap: 2rem;
   }
 
   @media (max-width: 1024px) {
-    .info-grid {
+    .dashboard-content-grid {
       grid-template-columns: 1fr;
     }
   }
@@ -233,6 +217,25 @@
     margin-top: 0.75rem;
   }
 
+  /* Status Bars (Running vs Stopped) */
+  .status-bars {
+    display: flex;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+    gap: 2px;
+  }
+
+  .bar-segment {
+    height: 100%;
+    transition: flex 0.5s ease;
+  }
+
+  .bar-segment.running { background: #10b981; }
+  .bar-segment.stopped { background: #f97316; }
+
   /* Icon Wrappers */
   .icon-wrapper {
     width: 36px;
@@ -284,10 +287,8 @@
 
   .progress-bar.blue { background: #3b82f6; }
   .progress-bar.purple { background: #8b5cf6; }
-  .progress-bar.orange { background: #f97316; }
-  .progress-bar.green { background: #10b981; }
 
-  /* Info Card Specifics */
+  /* Card Header */
   .card-header-styled {
     display: flex;
     align-items: center;
@@ -307,110 +308,107 @@
     color: var(--text-muted);
   }
 
-  .details-list {
+  /* Recent Containers List */
+  .recent-card {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
   }
 
-  .details-row {
+  .recent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .recent-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 0.8rem 1rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    transition: background 0.2s;
   }
 
-  .details-row:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
+  .recent-item:hover {
+    background: rgba(255, 255, 255, 0.06);
   }
 
+  .item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .item-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .item-image {
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .item-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .btn-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: white;
+  }
+
+  .btn-action.start {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+  }
+
+  .btn-action.start:hover {
+    background: rgba(16, 185, 129, 0.4);
+  }
+
+  .btn-action.stop {
+    background: rgba(249, 115, 22, 0.2);
+    color: #fb923c;
+  }
+
+  .btn-action.stop:hover {
+    background: rgba(249, 115, 22, 0.4);
+  }
+
+  /* Utils */
   .font-semibold {
     font-weight: 600;
   }
-
-  .font-mono {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 0.9rem;
-  }
-
   .text-muted {
     color: var(--text-muted);
-  }
-
-  .text-sm {
-    font-size: 0.8rem;
-  }
-
-  /* Health & Diagnostics */
-  .status-summary {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-
-  .health-indicator {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
   }
 
   :global(.text-green) {
     color: #10b981;
   }
-
-  .stats-pills-row {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .stat-pill-mini {
-    flex: 1;
-    min-width: 100px;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--card-border);
-    padding: 0.6rem 0.8rem;
-    border-radius: 10px;
-  }
-
-  .stat-pill-mini span {
-    font-size: 0.8rem;
-  }
-
-  .badge {
-    align-self: flex-start;
-    padding: 0.15rem 0.5rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 600;
-  }
-
-  .badge.blue {
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
-  }
-
-  .badge.purple {
-    background: rgba(139, 92, 246, 0.15);
-    color: #a78bfa;
-  }
-
-  .badge.orange {
-    background: rgba(249, 115, 22, 0.15);
-    color: #fdba74;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-
-  :global(.animate-pulse) {
-    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  :global(.text-orange) {
+    color: #f97316;
   }
 </style>
