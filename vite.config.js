@@ -1,2 +1,11 @@
-import viteConfig from './frontend/vite.config.js';
-export default viteConfig;
+import { defineConfig } from 'vite';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
+
+export default defineConfig({
+  root: './frontend',
+  plugins: [svelte()],
+  server: {
+    port: 5173,
+    host: '0.0.0.0'
+  }
+});
