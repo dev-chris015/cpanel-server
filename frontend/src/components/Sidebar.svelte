@@ -4,7 +4,6 @@
     Activity, 
     Terminal, 
     Settings, 
-    LogOut,
     Package,
     Cpu
   } from 'lucide-svelte';
@@ -58,10 +57,6 @@
       <Cpu size={14} />
       Docker API
     </div>
-    <button class="btn-logout">
-      <LogOut size={16} />
-      Salir
-    </button>
   </div>
 </aside>
 
@@ -150,22 +145,7 @@
     gap: 1rem;
   }
 
-  .btn-logout {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: transparent;
-    color: var(--text-muted);
-    border: none;
-    padding: 0;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: color 0.2s;
-  }
 
-  .btn-logout:hover {
-    color: var(--danger);
-  }
 
   /* Status Pill */
   .status-pill {

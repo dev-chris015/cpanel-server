@@ -5,10 +5,39 @@
     Box, 
     Clock,
     Play,
-    Square
+    Square,
+    Loader2
   } from 'lucide-svelte';
+  import { onMount } from 'svelte';
 
   export let containers = [];
+  export let fetchContainers;
+
+  let API_BASE = 'http://localhost:5000/api';
+  let actionLoading = {};
+
+  onMount(() => {
+    API_BASE = localStorage.getItem('apiBaseUrl') || 'http://localhost:5000/api';
+  });
+
+  async function performAction(id, action) {
+    if (!confirm(`¿Estás seguro que deseas ejecutar '${action}' en este contenedor?`)) return;
+    
+    actionLoading[id] = action;
+    try {
+      const res = await fetch(`${API_BASE}/containers/${id}/${action}`, { method: 'POST' });
+      const json = await res.json();
+      if (!json.success) {
+        alert(`Error: ${json.error}`);
+      } else if (fetchContainers) {
+        await fetchContainers();
+      }
+    } catch (err) {
+      alert(`Error de red al conectar con el servidor: ${err.message}`);
+    } finally {
+      actionLoading[id] = null;
+    }
+  }
 
   // Mock server statistics for Phase 2
   let cpuUsage = 14;
@@ -105,9 +134,31 @@
               </div>
               <div class="item-actions">
                 {#if rc.State === 'running'}
-                  <button class="btn-action stop" title="Detener (Mock)"><Square size={16}/></button>
+                  <button 
+                    class="btn-action stop" 
+                    title="Detener Contenedor"
+                    disabled={actionLoading[rc.Id]}
+                    on:click={() => performAction(rc.Id, 'stop')}
+                  >
+                    {#if actionLoading[rc.Id] === 'stop'}
+                      <Loader2 size={16} class="spin" />
+                    {:else}
+                      <Square size={16}/>
+                    {/if}
+                  </button>
                 {:else}
-                  <button class="btn-action start" title="Iniciar (Mock)"><Play size={16}/></button>
+                  <button 
+                    class="btn-action start" 
+                    title="Iniciar Contenedor"
+                    disabled={actionLoading[rc.Id]}
+                    on:click={() => performAction(rc.Id, 'start')}
+                  >
+                    {#if actionLoading[rc.Id] === 'start'}
+                      <Loader2 size={16} class="spin" />
+                    {:else}
+                      <Play size={16}/>
+                    {/if}
+                  </button>
                 {/if}
               </div>
             </div>

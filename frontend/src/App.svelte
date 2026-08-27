@@ -120,15 +120,12 @@
         <h1>{viewInfo.title}</h1>
         <p class="text-muted">{viewInfo.subtitle}</p>
       </div>
-      <div class="user-profile">
-        <div class="avatar">A</div>
-        <span class="user-name">Admin User</span>
-      </div>
     </header>
 
     {#if activeTab === 'dashboard'}
       <DashboardView 
         {containers}
+        {fetchContainers}
       />
     {:else if activeTab === 'containers'}
       <ContainersView 
@@ -243,38 +240,6 @@
     color: var(--text-muted);
     margin: 0;
     font-size: 0.95rem;
-  }
-
-  .user-profile {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 1rem;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--card-border);
-    border-radius: 50px;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .user-profile:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .avatar {
-    width: 32px; height: 32px;
-    background: var(--primary);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    color: white;
-  }
-
-  .user-name {
-    font-size: 0.9rem;
-    font-weight: 500;
   }
 
   .mobile-toggle {
