@@ -6,7 +6,7 @@
 
   let commandInput = '';
   let terminalHistory = [
-    { type: 'system', text: 'Conectado a la sesión de terminal del servidor cPanel Pro.' },
+    { type: 'system', text: 'Conectado a la sesión de terminal del servidor cPanel' },
     { type: 'system', text: 'Escribe "help" para ver una lista de comandos soportados.' }
   ];
 

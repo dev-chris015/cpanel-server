@@ -217,7 +217,7 @@
             <Info size={20} />
           </div>
           <div>
-            <h3>Acerca de cPanel Pro</h3>
+            <h3>Acerca de cPanel</h3>
             <p class="subtitle">Detalles de la versión del panel.</p>
           </div>
         </div>
