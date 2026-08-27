@@ -64,8 +64,6 @@
   .sidebar {
     width: 260px;
     background: var(--sidebar-bg);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
     border-right: 1px solid var(--card-border);
     display: flex;
     flex-direction: column;

@@ -153,15 +153,15 @@
 <style>
   /* Base Variables and Resets */
   :global(:root) {
-    --bg-dark: #09090b;
-    --sidebar-bg: rgba(15, 23, 42, 0.4);
-    --card-bg: rgba(30, 41, 59, 0.5);
-    --card-border: rgba(255, 255, 255, 0.08);
+    --bg-dark: #000000;
+    --sidebar-bg: #09090b;
+    --card-bg: #121215;
+    --card-border: #222226;
     --text-main: #f8fafc;
     --text-muted: #94a3b8;
-    --primary: #3b82f6;
-    --primary-hover: #2563eb;
-    --secondary: #8b5cf6;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --secondary: #3b82f6;
     --success: #10b981;
     --success-bg: rgba(16, 185, 129, 0.1);
     --danger: #ef4444;

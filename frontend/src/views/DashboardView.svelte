@@ -198,8 +198,6 @@
   /* Cards styling */
   .glass-card {
     background: var(--card-bg);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--card-border);
     border-radius: 20px;
     padding: 1.75rem;
