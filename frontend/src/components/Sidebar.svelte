@@ -10,6 +10,7 @@
   } from 'lucide-svelte';
 
   export let sidebarOpen = false;
+  export let activeTab = 'dashboard';
 </script>
 
 <aside class="sidebar" class:open={sidebarOpen}>
@@ -24,26 +25,26 @@
 
   <nav class="sidebar-nav">
     <ul>
-      <li class="active">
-        <a href="#dashboard">
+      <li class:active={activeTab === 'dashboard'}>
+        <a href="#dashboard" on:click|preventDefault={() => activeTab = 'dashboard'}>
           <Activity size={18} />
           <span>Dashboard</span>
         </a>
       </li>
-      <li>
-        <a href="#containers">
+      <li class:active={activeTab === 'containers'}>
+        <a href="#containers" on:click|preventDefault={() => activeTab = 'containers'}>
           <Package size={18} />
           <span>Contenedores</span>
         </a>
       </li>
-      <li>
-        <a href="#terminal">
+      <li class:active={activeTab === 'terminal'}>
+        <a href="#terminal" on:click|preventDefault={() => activeTab = 'terminal'}>
           <Terminal size={18} />
           <span>Terminal</span>
         </a>
       </li>
-      <li>
-        <a href="#settings">
+      <li class:active={activeTab === 'settings'}>
+        <a href="#settings" on:click|preventDefault={() => activeTab = 'settings'}>
           <Settings size={18} />
           <span>Configuración</span>
         </a>

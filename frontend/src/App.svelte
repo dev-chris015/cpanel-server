@@ -3,14 +3,19 @@
   import { Menu } from 'lucide-svelte';
   
   import Sidebar from './components/Sidebar.svelte';
-  import DeployCard from './components/DeployCard.svelte';
-  import ContainerTable from './components/ContainerTable.svelte';
+  import DashboardView from './views/DashboardView.svelte';
+  import ContainersView from './views/ContainersView.svelte';
+  import TerminalView from './views/TerminalView.svelte';
+  import SettingsView from './views/SettingsView.svelte';
 
   let containers = [];
   let loading = true;
   let error = null;
   let isDeploying = false;
   let sidebarOpen = false;
+  
+  // Navigation State
+  let activeTab = 'dashboard';
 
   // Form inputs for new deploy
   let imageName = '';
@@ -21,6 +26,14 @@
   let deployIsError = false;
 
   const API_BASE = 'http://localhost:5000/api';
+
+  // Reactive view titles and subtitles
+  $: viewInfo = {
+    dashboard: { title: 'Dashboard', subtitle: 'Resumen del estado de tu servidor local.' },
+    containers: { title: 'Contenedores', subtitle: 'Administra y despliega contenedores Docker.' },
+    terminal: { title: 'Terminal', subtitle: 'Consola interactiva con el servidor y Docker.' },
+    settings: { title: 'Configuración', subtitle: 'Ajustes del sistema y preferencias de la interfaz.' }
+  }[activeTab];
 
   async function fetchContainers() {
     loading = true;
@@ -100,14 +113,14 @@
   </button>
 
   <!-- Modular Sidebar -->
-  <Sidebar {sidebarOpen} />
+  <Sidebar {sidebarOpen} bind:activeTab />
 
   <!-- Main Content -->
   <main class="main-content">
     <header class="topbar">
       <div>
-        <h1>Dashboard</h1>
-        <p class="text-muted">Resumen del estado de tu servidor local.</p>
+        <h1>{viewInfo.title}</h1>
+        <p class="text-muted">{viewInfo.subtitle}</p>
       </div>
       <div class="user-profile">
         <div class="avatar">A</div>
@@ -115,25 +128,28 @@
       </div>
     </header>
 
-    <div class="dashboard-grid">
-      <DeployCard 
-        bind:imageName 
-        bind:containerName 
-        bind:hostPort 
-        bind:containerPort 
+    {#if activeTab === 'dashboard'}
+      <DashboardView {containers} />
+    {:else if activeTab === 'containers'}
+      <ContainersView 
+        {containers}
+        {loading}
+        {error}
+        {fetchContainers}
+        bind:imageName
+        bind:containerName
+        bind:hostPort
+        bind:containerPort
         {isDeploying}
         {deployMessage}
         {deployIsError}
         {handleDeploy}
       />
-
-      <ContainerTable 
-        {containers}
-        {loading}
-        {error}
-        {fetchContainers}
-      />
-    </div>
+    {:else if activeTab === 'terminal'}
+      <TerminalView {containers} />
+    {:else if activeTab === 'settings'}
+      <SettingsView />
+    {/if}
   </main>
 </div>
 
@@ -279,13 +295,6 @@
     font-weight: 500;
   }
 
-  /* Dashboard Grid */
-  .dashboard-grid {
-    display: grid;
-    grid-template-columns: 380px 1fr;
-    gap: 2rem;
-  }
-
   .mobile-toggle {
     display: none;
     position: fixed;
@@ -300,12 +309,6 @@
   }
 
   /* Responsive Design */
-  @media (max-width: 1024px) {
-    .dashboard-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
   @media (max-width: 768px) {
     .main-content {
       padding: 1.5rem;
