@@ -94,3 +94,65 @@ export const deployContainer = async (req, res) => {
     });
   }
 };
+
+export const startContainer = async (req, res) => {
+  try {
+    const container = docker.getContainer(req.params.id);
+    await container.start();
+    res.json({ success: true, message: 'Contenedor iniciado' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al iniciar', details: error.message });
+  }
+};
+
+export const stopContainer = async (req, res) => {
+  try {
+    const container = docker.getContainer(req.params.id);
+    await container.stop();
+    res.json({ success: true, message: 'Contenedor detenido' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al detener', details: error.message });
+  }
+};
+
+export const restartContainer = async (req, res) => {
+  try {
+    const container = docker.getContainer(req.params.id);
+    await container.restart();
+    res.json({ success: true, message: 'Contenedor reiniciado' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al reiniciar', details: error.message });
+  }
+};
+
+export const removeContainer = async (req, res) => {
+  try {
+    const container = docker.getContainer(req.params.id);
+    await container.remove({ force: true });
+    res.json({ success: true, message: 'Contenedor eliminado' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al eliminar', details: error.message });
+  }
+};
+
+export const inspectContainer = async (req, res) => {
+  try {
+    const container = docker.getContainer(req.params.id);
+    const info = await container.inspect();
+    res.json({ success: true, data: info });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al inspeccionar', details: error.message });
+  }
+};
+
+export const getContainerLogs = async (req, res) => {
+  try {
+    const container = docker.getContainer(req.params.id);
+    // Fetch logs (last 200 lines)
+    const logs = await container.logs({ stdout: true, stderr: true, tail: 200 });
+    // Docker multiplexes stdout/stderr, we parse it simply to string
+    res.json({ success: true, data: logs.toString('utf8') });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al obtener logs', details: error.message });
+  }
+};
