@@ -156,3 +156,69 @@ export const getContainerLogs = async (req, res) => {
     res.status(500).json({ success: false, error: 'Error al obtener logs', details: error.message });
   }
 };
+
+export const streamContainerLogs = async (req, res) => {
+  try {
+    const container = docker.getContainer(req.params.id);
+    const logStream = await container.logs({
+      follow: true,
+      stdout: true,
+      stderr: true,
+      tail: 50
+    });
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    logStream.on('data', chunk => {
+      // Docker attaches an 8-byte header to payload if TTY is false. 
+      // We send it to frontend, which will sanitize non-printable characters.
+      res.write(`data: ${JSON.stringify(chunk.toString('utf8'))}\n\n`);
+    });
+
+    logStream.on('end', () => {
+      res.write('event: end\ndata: \n\n');
+      res.end();
+    });
+
+    req.on('close', () => {
+      logStream.destroy();
+    });
+
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error al iniciar stream de logs', details: error.message });
+  }
+};
+
+export const execContainerCommand = async (req, res) => {
+  try {
+    const { command } = req.body;
+    if (!command) {
+      return res.status(400).json({ success: false, error: 'Comando no proporcionado' });
+    }
+
+    const container = docker.getContainer(req.params.id);
+    
+    // We use sh -c to allow complex commands
+    const exec = await container.exec({
+      Cmd: ['sh', '-c', command],
+      AttachStdout: true,
+      AttachStderr: true,
+      Tty: false
+    });
+    
+    const stream = await exec.start();
+    let output = '';
+    
+    stream.on('data', chunk => {
+      output += chunk.toString('utf8');
+    });
+    
+    stream.on('end', () => {
+      res.json({ success: true, data: output });
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Error ejecutando comando', details: error.message });
+  }
+};

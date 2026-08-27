@@ -6,7 +6,9 @@ import {
   restartContainer, 
   removeContainer, 
   inspectContainer, 
-  getContainerLogs 
+  getContainerLogs,
+  streamContainerLogs,
+  execContainerCommand
 } from '../controllers/dockerController.js';
 
 const router = Router();
@@ -21,5 +23,7 @@ router.post('/:id/restart', restartContainer);
 router.delete('/:id', removeContainer);
 router.get('/:id/inspect', inspectContainer);
 router.get('/:id/logs', getContainerLogs);
+router.get('/:id/logs/stream', streamContainerLogs);
+router.post('/:id/exec', execContainerCommand);
 
 export default router;
