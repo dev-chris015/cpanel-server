@@ -7,19 +7,8 @@
     Play,
     Square
   } from 'lucide-svelte';
-  import DeployCard from '../components/DeployCard.svelte';
 
   export let containers = [];
-
-  // Deploy props from App.svelte
-  export let imageName = '';
-  export let containerName = '';
-  export let hostPort = '';
-  export let containerPort = '';
-  export let isDeploying = false;
-  export let deployMessage = '';
-  export let deployIsError = false;
-  export let handleDeploy;
 
   // Mock server statistics for Phase 2
   let cpuUsage = 14;
@@ -41,7 +30,7 @@
         <div class="icon-wrapper blue">
           <Cpu size={20} />
         </div>
-        <span class="stat-title">Uso de CPU (Docker)</span>
+        <span class="stat-title">Uso CPU-Docker</span>
       </div>
       <div class="stat-value">{cpuUsage}%</div>
       <div class="progress-bar-container">
@@ -58,7 +47,7 @@
         <div class="icon-wrapper purple">
           <Database size={20} />
         </div>
-        <span class="stat-title">Memoria RAM (Docker)</span>
+        <span class="stat-title">Memoria RAM-Docker</span>
       </div>
       <div class="stat-value">{ramUsage}%</div>
       <div class="progress-bar-container">
@@ -90,20 +79,6 @@
   </div>
 
   <div class="dashboard-content-grid">
-    <!-- Quick Deploy Section Widget -->
-    <div class="deploy-section">
-      <DeployCard 
-        bind:imageName 
-        bind:containerName 
-        bind:hostPort 
-        bind:containerPort 
-        {isDeploying}
-        {deployMessage}
-        {deployIsError}
-        {handleDeploy}
-      />
-    </div>
-
     <!-- Recent Containers Shortcuts Widget -->
     <div class="glass-card recent-card">
       <div class="card-header-styled">
@@ -159,7 +134,7 @@
 
   .dashboard-content-grid {
     display: grid;
-    grid-template-columns: 380px 1fr;
+    grid-template-columns: 1fr;
     gap: 2rem;
   }
 
