@@ -1,13 +1,20 @@
 <script>
   import { onMount } from 'svelte';
-  import { Menu, Sun, Moon } from 'lucide-svelte';
+  import { Menu, Sun, Moon, LogOut, User } from 'lucide-svelte';
   import { api } from './lib/api.js';
+  import { reconnectSocket } from './lib/socket.js';
   
   import Sidebar from './components/Sidebar.svelte';
+  import LoginView from './views/LoginView.svelte';
   import DashboardView from './views/DashboardView.svelte';
   import ContainersView from './views/ContainersView.svelte';
   import TerminalView from './views/TerminalView.svelte';
   import DatabasesView from './views/DatabasesView.svelte';
+
+  // Authentication State
+  let isAuthenticated = false;
+  let currentUser = null;
+  let checkingAuth = true;
 
   let containers = [];
   let loading = true;
@@ -37,7 +44,50 @@
     databases: { title: 'MariaDB Telemetry', subtitle: 'Monitoreo de conexiones, hilos y almacenamiento de bases de datos WordPress.' }
   }[activeTab] || { title: 'cPanel', subtitle: 'Panel de administración' };
 
+  async function checkAuth() {
+    checkingAuth = true;
+    const token = api.getToken();
+
+    if (!token) {
+      isAuthenticated = false;
+      currentUser = null;
+      checkingAuth = false;
+      return;
+    }
+
+    try {
+      const res = await api.get('/auth/me');
+      if (res && res.success && res.user) {
+        isAuthenticated = true;
+        currentUser = res.user;
+        await fetchContainers();
+      } else {
+        isAuthenticated = false;
+        currentUser = null;
+      }
+    } catch {
+      isAuthenticated = false;
+      currentUser = null;
+    } finally {
+      checkingAuth = false;
+    }
+  }
+
+  function handleLoginSuccess(event) {
+    currentUser = event.detail.user;
+    isAuthenticated = true;
+    fetchContainers();
+  }
+
+  function handleLogout() {
+    api.clearToken();
+    isAuthenticated = false;
+    currentUser = null;
+    reconnectSocket();
+  }
+
   async function fetchContainers() {
+    if (!isAuthenticated) return;
     loading = true;
     error = null;
     try {
@@ -112,72 +162,119 @@
     const savedTheme = localStorage.getItem('cpanel-theme') || 'dark';
     currentTheme = savedTheme;
     applyTheme(savedTheme);
-    fetchContainers();
+
+    // Escuchar expiración o revocación de token (401)
+    const unsubscribeAuth = api.onUnauthorized(() => {
+      isAuthenticated = false;
+      currentUser = null;
+    });
+
+    checkAuth();
+
+    return () => {
+      unsubscribeAuth();
+    };
   });
 </script>
 
-<div class="layout">
-  <!-- Mobile Toggle -->
-  <button class="mobile-toggle" on:click={toggleSidebar} title="Abrir menú">
-    <Menu size={24} />
-  </button>
+{#if checkingAuth}
+  <div class="auth-loading-screen">
+    <div class="auth-spinner"></div>
+    <p>Verificando credenciales...</p>
+  </div>
+{:else if !isAuthenticated}
+  <LoginView 
+    {currentTheme} 
+    {toggleTheme} 
+    on:login={handleLoginSuccess} 
+  />
+{:else}
+  <div class="layout">
+    <!-- Mobile Toggle -->
+    <button class="mobile-toggle" on:click={toggleSidebar} title="Abrir menú">
+      <Menu size={24} />
+    </button>
 
-  <!-- Modular Sidebar -->
-  <Sidebar {sidebarOpen} bind:activeTab />
+    <!-- Modular Sidebar -->
+    <Sidebar {sidebarOpen} bind:activeTab />
 
-  <!-- Main Content -->
-  <main class="main-content">
-    <header class="topbar">
-      <div>
-        <h1>{viewInfo.title}</h1>
-        <p class="text-muted">{viewInfo.subtitle}</p>
-      </div>
+    <!-- Main Content -->
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <h1>{viewInfo.title}</h1>
+          <p class="text-muted">{viewInfo.subtitle}</p>
+        </div>
 
-      <!-- Theme Switcher Toggle -->
-      <div class="topbar-actions">
-        <button 
-          class="theme-toggle-btn" 
-          on:click={toggleTheme} 
-          title="Cambiar tema ({currentTheme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'})"
-        >
-          {#if currentTheme === 'dark'}
-            <Sun size={18} class="theme-icon sun-icon" />
-            <span class="theme-label">Claro</span>
-          {:else}
-            <Moon size={18} class="theme-icon moon-icon" />
-            <span class="theme-label">Oscuro</span>
+        <!-- Topbar Actions -->
+        <div class="topbar-actions">
+          {#if currentUser}
+            <div class="user-pill" title="Usuario autenticado">
+              <span class="user-avatar-badge">
+                <User size={14} />
+              </span>
+              <span class="username">{currentUser.username}</span>
+              {#if currentUser.role}
+                <span class="role-tag">{currentUser.role}</span>
+              {/if}
+            </div>
           {/if}
-        </button>
-      </div>
-    </header>
 
-    {#if activeTab === 'dashboard'}
-      <DashboardView 
-        {containers}
-        {fetchContainers}
-      />
-    {:else if activeTab === 'containers'}
-      <ContainersView 
-        {containers}
-        {loading}
-        {error}
-        {fetchContainers}
-        bind:imageName
-        bind:containerName
-        bind:hostPort
-        bind:containerPort
-        {isDeploying}
-        {deployMessage}
-        {deployIsError}
-        {handleDeploy}
-      />
-    {:else if activeTab === 'terminal'}
-      <TerminalView {containers} />
-    {:else if activeTab === 'databases'}
-      <DatabasesView />
-    {/if}
-  </main>
-</div>
+          <!-- Theme Switcher Toggle -->
+          <button 
+            class="theme-toggle-btn" 
+            on:click={toggleTheme} 
+            title="Cambiar tema ({currentTheme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'})"
+          >
+            {#if currentTheme === 'dark'}
+              <Sun size={18} class="theme-icon sun-icon" />
+              <span class="theme-label">Claro</span>
+            {:else}
+              <Moon size={18} class="theme-icon moon-icon" />
+              <span class="theme-label">Oscuro</span>
+            {/if}
+          </button>
+
+          <!-- Logout Button -->
+          <button 
+            class="logout-btn" 
+            on:click={handleLogout} 
+            title="Cerrar sesión"
+          >
+            <LogOut size={16} />
+            <span class="logout-label">Salir</span>
+          </button>
+        </div>
+      </header>
+
+      {#if activeTab === 'dashboard'}
+        <DashboardView 
+          {containers}
+          {fetchContainers}
+        />
+      {:else if activeTab === 'containers'}
+        <ContainersView 
+          {containers}
+          {loading}
+          {error}
+          {fetchContainers}
+          bind:imageName
+          bind:containerName
+          bind:hostPort
+          bind:containerPort
+          {isDeploying}
+          {deployMessage}
+          {deployIsError}
+          {handleDeploy}
+        />
+      {:else if activeTab === 'terminal'}
+        <TerminalView {containers} />
+      {:else if activeTab === 'databases'}
+        <DatabasesView />
+      {/if}
+    </main>
+  </div>
+{/if}
 
 <style>
   /* Base Variables and Resets */
@@ -216,6 +313,27 @@
     --card-border: rgba(0, 0, 0, 0.08);
     --text-main: #0f172a;
     --text-muted: #64748b;
+  }
+
+  .auth-loading-screen {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    background: var(--bg-dark);
+    color: var(--text-muted);
+    font-size: 0.95rem;
+  }
+
+  .auth-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(2, 132, 199, 0.2);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
   }
 
   .layout {
@@ -258,6 +376,45 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .user-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.82rem;
+  }
+
+  .user-avatar-badge {
+    background: rgba(2, 132, 199, 0.15);
+    color: var(--primary);
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .username {
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .role-tag {
+    font-size: 0.68rem;
+    background: rgba(2, 132, 199, 0.15);
+    color: var(--secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.03em;
   }
 
   .theme-toggle-btn {
@@ -278,6 +435,26 @@
 
   .theme-toggle-btn:hover {
     border-color: var(--primary);
+  }
+
+  .logout-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    padding: 8px 14px;
+    border-radius: 20px;
+    color: #ef4444;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .logout-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
   }
 
   :global(.sun-icon) {
@@ -302,6 +479,15 @@
     cursor: pointer;
   }
 
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   @media (max-width: 1024px) {
     .mobile-toggle {
       display: flex;
@@ -312,6 +498,12 @@
     .main-content {
       padding: 1.25rem;
       padding-top: 4.5rem;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .logout-label {
+      display: none;
     }
   }
 </style>
