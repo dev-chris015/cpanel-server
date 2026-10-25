@@ -3,8 +3,8 @@
     Server, 
     Activity, 
     Terminal, 
-    Settings, 
     Package,
+    Database,
     Cpu
   } from 'lucide-svelte';
 
@@ -39,13 +39,13 @@
       <li class:active={activeTab === 'terminal'}>
         <a href="#terminal" on:click|preventDefault={() => activeTab = 'terminal'}>
           <Terminal size={18} />
-          <span>Terminal</span>
+          <span>Terminal de Logs</span>
         </a>
       </li>
-      <li class:active={activeTab === 'settings'}>
-        <a href="#settings" on:click|preventDefault={() => activeTab = 'settings'}>
-          <Settings size={18} />
-          <span>Configuración</span>
+      <li class:active={activeTab === 'databases'}>
+        <a href="#databases" on:click|preventDefault={() => activeTab = 'databases'}>
+          <Database size={18} />
+          <span>MariaDB Telemetry</span>
         </a>
       </li>
     </ul>
@@ -55,7 +55,7 @@
     <div class="status-pill">
       <span class="dot"></span>
       <Cpu size={14} />
-      Docker API
+      Docker & DB Online
     </div>
   </div>
 </aside>
@@ -111,77 +111,66 @@
     gap: 0.5rem;
   }
 
-  .sidebar-nav a {
+  .sidebar-nav li a {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.8rem 1rem;
+    padding: 0.75rem 1rem;
     color: var(--text-muted);
     text-decoration: none;
-    border-radius: 8px;
     font-size: 0.95rem;
     font-weight: 500;
+    border-radius: 10px;
     transition: all 0.2s ease;
   }
 
-  .sidebar-nav a:hover {
+  .sidebar-nav li a:hover {
     color: var(--text-main);
     background: rgba(255, 255, 255, 0.05);
   }
 
   .sidebar-nav li.active a {
-    color: var(--text-main);
-    background: rgba(255, 255, 255, 0.1);
-    box-shadow: inset 2px 0 0 var(--primary);
+    color: #ffffff;
+    background: var(--primary);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
   }
 
   .sidebar-footer {
     padding: 1.5rem;
     border-top: 1px solid var(--card-border);
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
   }
 
-
-
-  /* Status Pill */
   .status-pill {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 0.5rem;
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    padding: 0.4rem 0.8rem;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 0.5rem 0.75rem;
     border-radius: 20px;
     font-size: 0.8rem;
-    color: var(--success);
-    font-weight: 500;
+    color: var(--text-muted);
+    border: 1px solid var(--card-border);
   }
 
   .dot {
-    width: 6px; height: 6px;
-    background-color: var(--success);
+    width: 8px;
+    height: 8px;
+    background: var(--success);
     border-radius: 50%;
     box-shadow: 0 0 8px var(--success);
-    animation: pulse-dot 2s infinite;
   }
 
-  @keyframes pulse-dot {
-    0% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.6; transform: scale(1.2); }
-    100% { opacity: 1; transform: scale(1); }
-  }
-
-  @media (max-width: 768px) {
+  @media (max-width: 1024px) {
     .sidebar {
       position: fixed;
-      left: -260px;
-      height: 100vh;
-    }
-    
-    .sidebar.open {
+      top: 0;
+      bottom: 0;
       left: 0;
+      transform: translateX(-100%);
+    }
+
+    .sidebar.open {
+      transform: translateX(0);
     }
   }
 </style>

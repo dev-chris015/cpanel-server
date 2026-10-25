@@ -6,165 +6,278 @@
     Clock,
     Play,
     Square,
-    Loader2
+    RotateCw,
+    HardDrive,
+    Server,
+    Activity,
+    AlertCircle,
+    CheckCircle2
   } from 'lucide-svelte';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import { api } from '../lib/api.js';
 
   export let containers = [];
   export let fetchContainers;
 
-  let API_BASE = 'http://localhost:5000/api';
-  let actionLoading = {};
+  let systemMetrics = null;
+  let metricsLoading = true;
+  let metricsError = null;
+  let intervalId = null;
 
-  onMount(() => {
-    API_BASE = localStorage.getItem('apiBaseUrl') || 'http://localhost:5000/api';
-  });
-
-  async function performAction(id, action) {
-    if (!confirm(`¿Estás seguro que deseas ejecutar '${action}' en este contenedor?`)) return;
-    
-    actionLoading[id] = action;
+  async function loadSystemMetrics() {
     try {
-      const res = await fetch(`${API_BASE}/containers/${id}/${action}`, { method: 'POST' });
-      const json = await res.json();
-      if (!json.success) {
-        alert(`Error: ${json.error}`);
-      } else if (fetchContainers) {
-        await fetchContainers();
+      const res = await api.get('/system/metrics');
+      if (res && res.success) {
+        systemMetrics = res.data;
+        metricsError = null;
       }
     } catch (err) {
-      alert(`Error de red al conectar con el servidor: ${err.message}`);
+      metricsError = err.message || 'Error cargando telemetría del sistema';
     } finally {
-      actionLoading[id] = null;
+      metricsLoading = false;
     }
   }
 
-  // Mock server statistics for Phase 2
-  let cpuUsage = 14;
-  let ramUsage = 42; // percentage
+  onMount(() => {
+    loadSystemMetrics();
+    intervalId = setInterval(loadSystemMetrics, 4000);
+  });
 
-  $: runningCount = containers.filter(c => c.State === 'running').length;
-  $: stoppedCount = containers.filter(c => c.State !== 'running').length;
-  
-  // Get up to 4 recent containers for quick access shortcuts
-  $: recentContainers = [...containers].slice(0, 4);
+  onDestroy(() => {
+    if (intervalId) clearInterval(intervalId);
+  });
+
+  $: runningContainers = containers.filter(c => (c.State || c.state) === 'running');
+  $: pausedContainers = containers.filter(c => (c.State || c.state) === 'paused');
+  $: stoppedContainers = containers.filter(c => {
+    const s = (c.State || c.state || '').toLowerCase();
+    return s !== 'running' && s !== 'paused';
+  });
+
+  $: runningCount = runningContainers.length;
+  $: pausedCount = pausedContainers.length;
+  $: stoppedCount = stoppedContainers.length;
+  $: totalCount = containers.length;
+
+  // Root & Mnt Disks
+  $: rootDisk = systemMetrics?.storage?.root;
+  $: mntDisk = systemMetrics?.storage?.mnt;
 </script>
 
 <div class="view-container">
-  <!-- Metrics Widget -->
-  <div class="stats-grid">
-    <!-- CPU Card -->
-    <div class="glass-card stat-card">
-      <div class="stat-header">
-        <div class="icon-wrapper blue">
-          <Cpu size={20} />
-        </div>
-        <span class="stat-title">Uso CPU-Docker</span>
+  <!-- Azure VM Telemetry Banner -->
+  <div class="azure-hero-card">
+    <div class="azure-badge-row">
+      <div class="vm-tag">
+        <Server size={15} />
+        <span>Azure VM Instance</span>
       </div>
-      <div class="stat-value">{cpuUsage}%</div>
-      <div class="progress-bar-container">
-        <div class="progress-bar blue" style="width: {cpuUsage}%"></div>
-      </div>
-      <div class="stat-footer text-muted">
-        <span>Estimado del daemon</span>
-      </div>
-    </div>
-
-    <!-- RAM Card -->
-    <div class="glass-card stat-card">
-      <div class="stat-header">
-        <div class="icon-wrapper purple">
-          <Database size={20} />
-        </div>
-        <span class="stat-title">Memoria RAM-Docker</span>
-      </div>
-      <div class="stat-value">{ramUsage}%</div>
-      <div class="progress-bar-container">
-        <div class="progress-bar purple" style="width: {ramUsage}%"></div>
-      </div>
-      <div class="stat-footer text-muted">
-        <span>3.36 GB asignados</span>
+      <div class="specs-pill">
+        <span>2 vCPUs Standard</span>
+        <span class="sep">•</span>
+        <span>8.0 GB RAM</span>
+        <span class="sep">•</span>
+        <span class="status-live">
+          <span class="pulse-dot"></span> LIVE TELEMETRY
+        </span>
       </div>
     </div>
 
-    <!-- Active Containers Breakdown Card -->
-    <div class="glass-card stat-card">
-      <div class="stat-header">
-        <div class="icon-wrapper green">
-          <Box size={20} />
+    <!-- VM Telemetry Grid -->
+    <div class="telemetry-grid">
+      <!-- CPU Load -->
+      <div class="telemetry-item">
+        <div class="item-head">
+          <span class="label">
+            <Cpu size={16} class="icon-cpu" />
+            CPU (2 vCPUs)
+          </span>
+          <span class="val font-mono">{systemMetrics?.cpu?.currentLoadPercent ?? '--'}%</span>
         </div>
-        <span class="stat-title">Contenedores Totales</span>
+        <div class="progress-bar">
+          <div 
+            class="fill fill-cpu" 
+            style="width: {systemMetrics?.cpu?.currentLoadPercent || 0}%"
+          ></div>
+        </div>
+        <div class="item-sub text-muted">
+          <span>{systemMetrics?.cpu?.brand || 'x86_64 Processor'}</span>
+          <span>{systemMetrics?.cpu?.speedGhz ? systemMetrics.cpu.speedGhz + ' GHz' : ''}</span>
+        </div>
       </div>
-      <div class="stat-value">{containers.length}</div>
-      <div class="status-bars">
-        <div class="bar-segment running" style="flex: {runningCount || 1}" title="{runningCount} Running"></div>
-        <div class="bar-segment stopped" style="flex: {stoppedCount || (containers.length === 0 ? 1 : 0)}" title="{stoppedCount} Stopped"></div>
+
+      <!-- RAM Usage -->
+      <div class="telemetry-item">
+        <div class="item-head">
+          <span class="label">
+            <Database size={16} class="icon-ram" />
+            Memoria RAM (8 GB)
+          </span>
+          <span class="val font-mono">
+            {systemMetrics?.memory?.usedGb ?? '--'} / {systemMetrics?.memory?.totalGb ?? 8} GB
+          </span>
+        </div>
+        <div class="progress-bar">
+          <div 
+            class="fill fill-ram" 
+            style="width: {systemMetrics?.memory?.usedPercent || 0}%"
+          ></div>
+        </div>
+        <div class="item-sub text-muted">
+          <span>Uso actual: {systemMetrics?.memory?.usedPercent ?? '--'}%</span>
+          <span>Disponible: {systemMetrics?.memory?.freeGb ?? '--'} GB</span>
+        </div>
       </div>
-      <div class="stat-footer text-muted">
-        <span class="text-green font-semibold">{runningCount} corriendo</span> | 
-        <span class="text-orange font-semibold">{stoppedCount} detenidos</span>
+
+      <!-- Disco Raíz / -->
+      <div class="telemetry-item">
+        <div class="item-head">
+          <span class="label">
+            <HardDrive size={16} class="icon-disk-root" />
+            Disco Raíz (/)
+          </span>
+          <span class="val font-mono">
+            {rootDisk ? `${rootDisk.usedGb} / ${rootDisk.sizeGb} GB` : 'N/A'}
+          </span>
+        </div>
+        <div class="progress-bar">
+          <div 
+            class="fill fill-disk-root" 
+            style="width: {rootDisk?.usePercent || 0}%"
+          ></div>
+        </div>
+        <div class="item-sub text-muted">
+          <span>Ocupado: {rootDisk?.usePercent ?? 0}%</span>
+          <span>Libre: {rootDisk?.availableGb ?? '--'} GB</span>
+        </div>
+      </div>
+
+      <!-- Disco Temporal /mnt -->
+      <div class="telemetry-item">
+        <div class="item-head">
+          <span class="label">
+            <HardDrive size={16} class="icon-disk-mnt" />
+            SSD Temp (/mnt)
+          </span>
+          <span class="val font-mono">
+            {mntDisk ? `${mntDisk.usedGb} / ${mntDisk.sizeGb} GB` : 'N/A'}
+          </span>
+        </div>
+        <div class="progress-bar">
+          <div 
+            class="fill fill-disk-mnt" 
+            style="width: {mntDisk?.usePercent || 0}%"
+          ></div>
+        </div>
+        <div class="item-sub text-muted">
+          <span>{mntDisk ? `Ocupado: ${mntDisk.usePercent}%` : 'Montaje no detectado'}</span>
+          <span>{mntDisk?.availableGb ? `${mntDisk.availableGb} GB libres` : ''}</span>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="dashboard-content-grid">
-    <!-- Recent Containers Shortcuts Widget -->
-    <div class="glass-card recent-card">
-      <div class="card-header-styled">
-        <div class="icon-wrapper orange">
-          <Clock size={20} />
+  <!-- Resumen Visual del Estado de los Contenedores -->
+  <div class="containers-overview-section">
+    <div class="section-title-row">
+      <div class="title-with-icon">
+        <Box size={20} class="icon-box" />
+        <h3>Resumen del Ecosistema Docker</h3>
+      </div>
+      <span class="total-badge">{totalCount} Contenedores Registrados</span>
+    </div>
+
+    <!-- Status summary pills / cards -->
+    <div class="status-summary-grid">
+      <!-- Running -->
+      <div class="summary-card card-running">
+        <div class="summary-icon-box">
+          <Play size={20} />
         </div>
-        <div>
-          <h3>Accesos Directos</h3>
-          <p class="subtitle">Contenedores recientes</p>
+        <div class="summary-data">
+          <span class="summary-count font-mono">{runningCount}</span>
+          <span class="summary-label">En Ejecución (Running)</span>
         </div>
       </div>
-      <div class="recent-list">
-        {#if recentContainers.length === 0}
-          <div class="empty-state">
-            <Box size={32} class="text-muted" />
-            <p class="text-muted">No hay contenedores recientes.</p>
-          </div>
+
+      <!-- Paused -->
+      <div class="summary-card card-paused">
+        <div class="summary-icon-box">
+          <Clock size={20} />
+        </div>
+        <div class="summary-data">
+          <span class="summary-count font-mono">{pausedCount}</span>
+          <span class="summary-label">Pausados (Paused)</span>
+        </div>
+      </div>
+
+      <!-- Stopped -->
+      <div class="summary-card card-stopped">
+        <div class="summary-icon-box">
+          <Square size={20} />
+        </div>
+        <div class="summary-data">
+          <span class="summary-count font-mono">{stoppedCount}</span>
+          <span class="summary-label">Detenidos (Stopped)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Barra de proporción visual -->
+    <div class="proportion-bar-container">
+      <div class="proportion-bar">
+        {#if totalCount > 0}
+          <div 
+            class="bar-seg seg-running" 
+            style="width: {(runningCount / totalCount) * 100}%"
+            title="Running: {runningCount}"
+          ></div>
+          <div 
+            class="bar-seg seg-paused" 
+            style="width: {(pausedCount / totalCount) * 100}%"
+            title="Paused: {pausedCount}"
+          ></div>
+          <div 
+            class="bar-seg seg-stopped" 
+            style="width: {(stoppedCount / totalCount) * 100}%"
+            title="Stopped: {stoppedCount}"
+          ></div>
         {:else}
-          {#each recentContainers as rc}
-            <div class="recent-item">
-              <div class="item-info">
-                <span class="item-name">{rc.Names ? rc.Names.join(', ').replace(/^\//, '') : rc.Id.substring(0, 8)}</span>
-                <span class="item-image text-muted">{rc.Image}</span>
+          <div class="bar-seg seg-empty" style="width: 100%"></div>
+        {/if}
+      </div>
+      <div class="proportion-legend">
+        <span class="leg-item"><span class="leg-dot bg-running"></span> Running ({runningCount})</span>
+        <span class="leg-item"><span class="leg-dot bg-paused"></span> Paused ({pausedCount})</span>
+        <span class="leg-item"><span class="leg-dot bg-stopped"></span> Stopped ({stoppedCount})</span>
+      </div>
+    </div>
+
+    <!-- Quick Containers List -->
+    <div class="quick-containers-list">
+      <h4 class="subhead">Contenedores del Sistema</h4>
+      {#if containers.length === 0}
+        <div class="empty-list-box">No se han encontrado contenedores Docker en el host.</div>
+      {:else}
+        <div class="quick-grid">
+          {#each containers as c}
+            {@const state = (c.State || c.state || '').toLowerCase()}
+            <div class="container-mini-card state-{state}">
+              <div class="mini-top">
+                <span class="mini-name" title={c.name || c.Names?.[0]}>
+                  {c.name || c.Names?.[0]?.replace(/^\//, '') || c.Id?.slice(0, 12)}
+                </span>
+                <span class="mini-badge badge-{state}">{state}</span>
               </div>
-              <div class="item-actions">
-                {#if rc.State === 'running'}
-                  <button 
-                    class="btn-action stop" 
-                    title="Detener Contenedor"
-                    disabled={actionLoading[rc.Id]}
-                    on:click={() => performAction(rc.Id, 'stop')}
-                  >
-                    {#if actionLoading[rc.Id] === 'stop'}
-                      <Loader2 size={16} class="spin" />
-                    {:else}
-                      <Square size={16}/>
-                    {/if}
-                  </button>
-                {:else}
-                  <button 
-                    class="btn-action start" 
-                    title="Iniciar Contenedor"
-                    disabled={actionLoading[rc.Id]}
-                    on:click={() => performAction(rc.Id, 'start')}
-                  >
-                    {#if actionLoading[rc.Id] === 'start'}
-                      <Loader2 size={16} class="spin" />
-                    {:else}
-                      <Play size={16}/>
-                    {/if}
-                  </button>
-                {/if}
+              <div class="mini-bottom">
+                <span class="mini-image text-muted" title={c.image || c.Image}>
+                  {c.image || c.Image}
+                </span>
               </div>
             </div>
           {/each}
-        {/if}
-      </div>
+        </div>
+      {/if}
     </div>
   </div>
 </div>
@@ -173,266 +286,388 @@
   .view-container {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 1.75rem;
   }
 
-  /* Grid layouts */
-  .stats-grid {
+  /* Azure VM Telemetry Banner */
+  .azure-hero-card {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .azure-badge-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 1rem;
+  }
+
+  .vm-tag {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    color: #38bdf8;
+    font-size: 1.05rem;
+    letter-spacing: 0.02em;
+  }
+
+  .specs-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 6px 14px;
+    border-radius: 9999px;
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .sep {
+    color: #64748b;
+  }
+
+  .status-live {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #34d399;
+    font-weight: 600;
+    font-size: 0.75rem;
+  }
+
+  .pulse-dot {
+    width: 7px;
+    height: 7px;
+    background: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #10b981;
+    animation: pulse 1.8s infinite;
+  }
+
+  @keyframes pulse {
+    0% { transform: scale(0.9); opacity: 0.8; }
+    50% { transform: scale(1.3); opacity: 1; }
+    100% { transform: scale(0.9); opacity: 0.8; }
+  }
+
+  .telemetry-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .telemetry-item {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .item-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #94a3b8;
+  }
+
+  :global(.icon-cpu) { color: #38bdf8; }
+  :global(.icon-ram) { color: #a855f7; }
+  :global(.icon-disk-root) { color: #f59e0b; }
+  :global(.icon-disk-mnt) { color: #10b981; }
+
+  .val {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #f8fafc;
+  }
+
+  .progress-bar {
+    width: 100%;
+    height: 7px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+
+  .fill-cpu { background: linear-gradient(90deg, #38bdf8, #0284c7); }
+  .fill-ram { background: linear-gradient(90deg, #a855f7, #7c3aed); }
+  .fill-disk-root { background: linear-gradient(90deg, #f59e0b, #d97706); }
+  .fill-disk-mnt { background: linear-gradient(90deg, #10b981, #059669); }
+
+  .item-sub {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+  }
+
+  /* Containers Overview Section */
+  .containers-overview-section {
+    background: var(--card-bg, #121215);
+    border: 1px solid var(--card-border, #222226);
+    border-radius: 16px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
     gap: 1.5rem;
   }
 
-  .dashboard-content-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 2rem;
-  }
-
-  @media (max-width: 1024px) {
-    .dashboard-content-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  /* Cards styling */
-  .glass-card {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 20px;
-    padding: 1.75rem;
-    box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.2);
-    transition: border-color 0.3s ease, box-shadow 0.3s ease;
-  }
-
-  .glass-card:hover {
-    border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.3);
-  }
-
-  /* Stat Card Specifics */
-  .stat-card {
+  .section-title-row {
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
   }
 
-  .stat-header {
+  .title-with-icon {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    gap: 10px;
   }
 
-  .stat-title {
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: var(--text-muted);
+  :global(.icon-box) {
+    color: #38bdf8;
   }
 
-  .stat-value {
-    font-size: 2.25rem;
-    font-weight: 700;
-    margin-bottom: 0.75rem;
-    letter-spacing: -0.03em;
+  .section-title-row h3 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-main, #f8fafc);
   }
 
-  .stat-footer {
-    font-size: 0.8rem;
-    margin-top: 0.75rem;
+  .total-badge {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border: 1px solid rgba(56, 189, 248, 0.25);
   }
 
-  /* Status Bars (Running vs Stopped) */
-  .status-bars {
+  .status-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+
+  .summary-card {
+    border-radius: 12px;
+    padding: 1.15rem;
     display: flex;
-    width: 100%;
-    height: 6px;
-    border-radius: 3px;
-    overflow: hidden;
-    background: rgba(255, 255, 255, 0.05);
-    gap: 2px;
+    align-items: center;
+    gap: 14px;
+    border: 1px solid transparent;
   }
 
-  .bar-segment {
-    height: 100%;
-    transition: flex 0.5s ease;
+  .card-running {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.25);
+    color: #34d399;
   }
+  .card-running .summary-icon-box { background: rgba(16, 185, 129, 0.15); }
 
-  .bar-segment.running { background: #10b981; }
-  .bar-segment.stopped { background: #f97316; }
+  .card-paused {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+  }
+  .card-paused .summary-icon-box { background: rgba(245, 158, 11, 0.15); }
 
-  /* Icon Wrappers */
-  .icon-wrapper {
-    width: 36px;
-    height: 36px;
+  .card-stopped {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.25);
+    color: #f87171;
+  }
+  .card-stopped .summary-icon-box { background: rgba(239, 68, 68, 0.15); }
+
+  .summary-icon-box {
+    width: 44px;
+    height: 44px;
     border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
-  .icon-wrapper.blue {
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
-    border: 1px solid rgba(59, 130, 246, 0.3);
+  .summary-data {
+    display: flex;
+    flex-direction: column;
   }
 
-  .icon-wrapper.purple {
-    background: rgba(139, 92, 246, 0.15);
-    color: #a78bfa;
-    border: 1px solid rgba(139, 92, 246, 0.3);
+  .summary-count {
+    font-size: 1.5rem;
+    font-weight: 700;
   }
 
-  .icon-wrapper.orange {
-    background: rgba(249, 115, 22, 0.15);
-    color: #fdba74;
-    border: 1px solid rgba(249, 115, 22, 0.3);
+  .summary-label {
+    font-size: 0.78rem;
+    color: #94a3b8;
   }
 
-  .icon-wrapper.green {
-    background: rgba(16, 185, 129, 0.15);
-    color: #34d399;
-    border: 1px solid rgba(16, 185, 129, 0.3);
+  /* Proportion Bar */
+  .proportion-bar-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
-  /* Progress Bars */
-  .progress-bar-container {
+  .proportion-bar {
     width: 100%;
-    height: 6px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 3px;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 9999px;
     overflow: hidden;
+    display: flex;
   }
 
-  .progress-bar {
+  .bar-seg {
     height: 100%;
-    border-radius: 3px;
-    transition: width 0.5s ease-in-out;
+    transition: width 0.3s ease;
   }
 
-  .progress-bar.blue { background: #3b82f6; }
-  .progress-bar.purple { background: #8b5cf6; }
+  .seg-running { background: #10b981; }
+  .seg-paused { background: #f59e0b; }
+  .seg-stopped { background: #ef4444; }
+  .seg-empty { background: rgba(255, 255, 255, 0.1); }
 
-  /* Card Header */
-  .card-header-styled {
+  .proportion-legend {
+    display: flex;
+    gap: 16px;
+    font-size: 0.78rem;
+    color: #94a3b8;
+  }
+
+  .leg-item {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+    gap: 6px;
   }
 
-  .card-header-styled h3 {
+  .leg-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .bg-running { background: #10b981; }
+  .bg-paused { background: #f59e0b; }
+  .bg-stopped { background: #ef4444; }
+
+  /* Quick Containers */
+  .quick-containers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .subhead {
     margin: 0;
-    font-size: 1.15rem;
+    font-size: 0.9rem;
     font-weight: 600;
+    color: var(--text-muted, #94a3b8);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
-  .subtitle {
-    margin: 0;
-    font-size: 0.85rem;
-    color: var(--text-muted);
+  .quick-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
   }
 
-  /* Recent Containers List */
-  .recent-card {
+  .container-mini-card {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
+    gap: 6px;
   }
 
-  .recent-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-    gap: 1rem;
-    text-align: center;
-  }
-
-  .recent-item {
+  .mini-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.8rem 1rem;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 12px;
-    transition: background 0.2s;
+    gap: 8px;
   }
 
-  .recent-item:hover {
-    background: rgba(255, 255, 255, 0.06);
-  }
-
-  .item-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-
-  .item-name {
+  .mini-name {
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 0.85rem;
+    color: #f1f5f9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .item-image {
-    font-size: 0.8rem;
-    font-family: 'JetBrains Mono', monospace;
+  .mini-badge {
+    padding: 2px 7px;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: capitalize;
   }
 
-  .item-actions {
-    display: flex;
-    gap: 0.5rem;
+  .badge-running { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+  .badge-paused { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+  .badge-stopped, .badge-exited { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+  .mini-bottom {
+    overflow: hidden;
   }
 
-  .btn-action {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
+  .mini-image {
+    font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    font-family: monospace;
+  }
+
+  .empty-list-box {
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.15);
     border-radius: 8px;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s;
-    color: white;
+    text-align: center;
+    color: #64748b;
+    font-size: 0.85rem;
   }
 
-  .btn-action.start {
-    background: rgba(16, 185, 129, 0.2);
-    color: #34d399;
+  .font-mono {
+    font-family: monospace;
   }
 
-  .btn-action.start:hover {
-    background: rgba(16, 185, 129, 0.4);
-  }
-
-  .btn-action.stop {
-    background: rgba(249, 115, 22, 0.2);
-    color: #fb923c;
-  }
-
-  .btn-action.stop:hover {
-    background: rgba(249, 115, 22, 0.4);
-  }
-
-  /* Utils */
-  .font-semibold {
-    font-weight: 600;
-  }
   .text-muted {
-    color: var(--text-muted);
-  }
-
-  :global(.text-green) {
-    color: #10b981;
-  }
-  :global(.text-orange) {
-    color: #f97316;
+    color: var(--text-muted, #94a3b8);
   }
 </style>

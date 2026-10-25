@@ -1,12 +1,13 @@
 <script>
   import { onMount } from 'svelte';
-  import { Menu } from 'lucide-svelte';
+  import { Menu, Sun, Moon } from 'lucide-svelte';
+  import { api } from './lib/api.js';
   
   import Sidebar from './components/Sidebar.svelte';
   import DashboardView from './views/DashboardView.svelte';
   import ContainersView from './views/ContainersView.svelte';
   import TerminalView from './views/TerminalView.svelte';
-  import SettingsView from './views/SettingsView.svelte';
+  import DatabasesView from './views/DatabasesView.svelte';
 
   let containers = [];
   let loading = true;
@@ -17,6 +18,9 @@
   // Navigation State
   let activeTab = 'dashboard';
 
+  // Theme State: 'dark' | 'light'
+  let currentTheme = 'dark';
+
   // Form inputs for new deploy
   let imageName = '';
   let containerName = '';
@@ -25,29 +29,26 @@
   let deployMessage = '';
   let deployIsError = false;
 
-  let API_BASE = 'http://localhost:5000/api';
-
   // Reactive view titles and subtitles
   $: viewInfo = {
-    dashboard: { title: 'Dashboard', subtitle: 'Resumen del estado de tu servidor local.' },
-    containers: { title: 'Contenedores', subtitle: 'Administra y despliega contenedores Docker.' },
-    terminal: { title: 'Terminal', subtitle: 'Consola interactiva con el servidor y Docker.' },
-    settings: { title: 'Configuración', subtitle: 'Ajustes del sistema y preferencias de la interfaz.' }
-  }[activeTab];
+    dashboard: { title: 'Dashboard', subtitle: 'Telemetría de Azure VM y resumen visual de contenedores.' },
+    containers: { title: 'Gestión de Contenedores', subtitle: 'Monitoreo de métricas en caliente, ciclo de vida e inspección técnica.' },
+    terminal: { title: 'Terminal de Logs', subtitle: 'Transmisión de registros en tiempo real en consola interactiva.' },
+    databases: { title: 'MariaDB Telemetry', subtitle: 'Monitoreo de conexiones, hilos y almacenamiento de bases de datos WordPress.' }
+  }[activeTab] || { title: 'cPanel', subtitle: 'Panel de administración' };
 
   async function fetchContainers() {
     loading = true;
     error = null;
     try {
-      const res = await fetch(`${API_BASE}/containers`);
-      const json = await res.json();
-      if (json.success) {
-        containers = json.data;
+      const res = await api.get('/containers');
+      if (res && res.success) {
+        containers = res.data;
       } else {
-        error = json.error || 'Error al obtener la lista de contenedores';
+        error = res?.error || 'Error al obtener la lista de contenedores';
       }
     } catch (err) {
-      error = 'No se pudo conectar con el servidor Backend (Express). Asegúrate de que el backend está corriendo.';
+      error = err.message || 'No se pudo conectar con el servidor backend';
     } finally {
       loading = false;
     }
@@ -65,15 +66,10 @@
         ports: hostPort && containerPort ? [{ hostPort, containerPort }] : []
       };
 
-      const res = await fetch(`${API_BASE}/deploy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      const res = await api.post('/deploy', payload);
 
-      const json = await res.json();
-      if (json.success) {
-        deployMessage = `¡Despliegue exitoso! ID: ${json.data.id.substring(0, 12)}`;
+      if (res && res.success) {
+        deployMessage = `¡Despliegue exitoso! ID: ${(res.data?.id || '').substring(0, 12)}`;
         deployIsError = false;
         imageName = '';
         containerName = '';
@@ -81,7 +77,7 @@
         containerPort = '';
         await fetchContainers();
       } else {
-        deployMessage = `Error: ${json.error} - ${json.details || ''}`;
+        deployMessage = `Error: ${res?.error || 'Error al desplegar'}`;
         deployIsError = true;
       }
     } catch (err) {
@@ -96,17 +92,33 @@
     sidebarOpen = !sidebarOpen;
   }
 
+  function toggleTheme() {
+    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    applyTheme(currentTheme);
+  }
+
+  function applyTheme(theme) {
+    if (typeof document !== 'undefined') {
+      if (theme === 'light') {
+        document.body.classList.add('theme-light');
+      } else {
+        document.body.classList.remove('theme-light');
+      }
+      localStorage.setItem('cpanel-theme', theme);
+    }
+  }
+
   onMount(() => {
-    API_BASE = localStorage.getItem('apiBaseUrl') || 'http://localhost:5000/api';
-    const theme = localStorage.getItem('theme') || 'dark';
-    document.body.className = theme === 'light' ? 'theme-light' : '';
+    const savedTheme = localStorage.getItem('cpanel-theme') || 'dark';
+    currentTheme = savedTheme;
+    applyTheme(savedTheme);
     fetchContainers();
   });
 </script>
 
 <div class="layout">
   <!-- Mobile Toggle -->
-  <button class="mobile-toggle" on:click={toggleSidebar}>
+  <button class="mobile-toggle" on:click={toggleSidebar} title="Abrir menú">
     <Menu size={24} />
   </button>
 
@@ -119,6 +131,23 @@
       <div>
         <h1>{viewInfo.title}</h1>
         <p class="text-muted">{viewInfo.subtitle}</p>
+      </div>
+
+      <!-- Theme Switcher Toggle -->
+      <div class="topbar-actions">
+        <button 
+          class="theme-toggle-btn" 
+          on:click={toggleTheme} 
+          title="Cambiar tema ({currentTheme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'})"
+        >
+          {#if currentTheme === 'dark'}
+            <Sun size={18} class="theme-icon sun-icon" />
+            <span class="theme-label">Claro</span>
+          {:else}
+            <Moon size={18} class="theme-icon moon-icon" />
+            <span class="theme-label">Oscuro</span>
+          {/if}
+        </button>
       </div>
     </header>
 
@@ -144,8 +173,8 @@
       />
     {:else if activeTab === 'terminal'}
       <TerminalView {containers} />
-    {:else if activeTab === 'settings'}
-      <SettingsView />
+    {:else if activeTab === 'databases'}
+      <DatabasesView />
     {/if}
   </main>
 </div>
@@ -153,15 +182,15 @@
 <style>
   /* Base Variables and Resets */
   :global(:root) {
-    --bg-dark: #000000;
-    --sidebar-bg: #09090b;
-    --card-bg: #121215;
-    --card-border: #222226;
+    --bg-dark: #090e17;
+    --sidebar-bg: #0d1524;
+    --card-bg: #111a2e;
+    --card-border: rgba(255, 255, 255, 0.08);
     --text-main: #f8fafc;
     --text-muted: #94a3b8;
-    --primary: #2563eb;
-    --primary-hover: #1d4ed8;
-    --secondary: #3b82f6;
+    --primary: #0284c7;
+    --primary-hover: #0369a1;
+    --secondary: #38bdf8;
     --success: #10b981;
     --success-bg: rgba(16, 185, 129, 0.1);
     --danger: #ef4444;
@@ -176,92 +205,113 @@
     color: var(--text-main);
     min-height: 100vh;
     overflow-x: hidden;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 
-  /* Theme support */
+  /* Theme Light */
   :global(body.theme-light) {
-    --bg-dark: #f1f5f9;
-    --sidebar-bg: rgba(255, 255, 255, 0.8);
-    --card-bg: rgba(255, 255, 255, 0.9);
-    --card-border: rgba(0, 0, 0, 0.1);
+    --bg-dark: #f8fafc;
+    --sidebar-bg: #ffffff;
+    --card-bg: #ffffff;
+    --card-border: rgba(0, 0, 0, 0.08);
     --text-main: #0f172a;
     --text-muted: #64748b;
   }
-  
-  :global(body.theme-light .mesh-bg) {
-    opacity: 0.5;
-  }
-  
-  :global(body.theme-light .user-profile) {
-    background: rgba(0,0,0,0.05);
-    border: 1px solid rgba(0,0,0,0.1);
-  }
 
-  /* Utils & Animations - globally available */
-  :global(.spin) {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    100% { transform: rotate(360deg); }
-  }
-
-  /* Layout Structure */
   .layout {
     display: flex;
     min-height: 100vh;
-    position: relative;
-    z-index: 1;
   }
 
-  /* Main Content Area */
   .main-content {
     flex: 1;
-    padding: 2rem 3rem;
-    max-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 2rem;
     overflow-y: auto;
+    background: var(--bg-dark);
   }
 
   .topbar {
     display: flex;
     justify-content: space-between;
-    align-items: flex-end;
-    margin-bottom: 2.5rem;
+    align-items: flex-start;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--card-border);
   }
 
   .topbar h1 {
-    font-size: 2rem;
-    margin: 0 0 0.25rem 0;
+    font-size: 1.75rem;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    margin: 0 0 0.4rem 0;
+    color: var(--text-main);
   }
 
   .text-muted {
-    color: var(--text-muted);
     margin: 0;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .theme-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    padding: 8px 14px;
+    border-radius: 20px;
+    color: var(--text-main);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .theme-toggle-btn:hover {
+    border-color: var(--primary);
+  }
+
+  :global(.sun-icon) {
+    color: #f59e0b;
+  }
+
+  :global(.moon-icon) {
+    color: #38bdf8;
   }
 
   .mobile-toggle {
     display: none;
     position: fixed;
-    top: 1rem; right: 1rem;
+    top: 1rem;
+    right: 1rem;
     z-index: 100;
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    color: white;
+    color: var(--text-main);
     padding: 0.5rem;
     border-radius: 8px;
     cursor: pointer;
   }
 
-  /* Responsive Design */
-  @media (max-width: 768px) {
-    .main-content {
-      padding: 1.5rem;
-    }
+  @media (max-width: 1024px) {
     .mobile-toggle {
-      display: block;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .main-content {
+      padding: 1.25rem;
+      padding-top: 4.5rem;
     }
   }
 </style>
