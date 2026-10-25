@@ -49,10 +49,11 @@ jobs:
           script_stop: true
           script: |
             # 1. Definir directorio del proyecto
-            PROJECT_DIR="$HOME/cpanel-server"
+            PROJECT_DIR="/home/azureuser/server/cpanel-server"
 
             # Si el directorio no existe, clonar el repositorio
             if [ ! -d "$PROJECT_DIR" ]; then
+              mkdir -p /home/azureuser/server
               git clone "https://github.com/${{ github.repository }}.git" "$PROJECT_DIR"
             fi
 
