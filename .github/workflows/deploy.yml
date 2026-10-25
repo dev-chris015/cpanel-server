@@ -42,10 +42,10 @@ jobs:
       - name: Desplegar en Azure VM vía SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.AZURE_VM_HOST }}
-          username: ${{ secrets.AZURE_VM_USER }}
-          key: ${{ secrets.AZURE_VM_SSH_KEY }}
-          port: ${{ secrets.AZURE_VM_PORT || 22 }}
+          host: ${{ secrets.VM_SOR_HOST }}
+          username: ${{ secrets.VM_SOR_USER }}
+          key: ${{ secrets.PRIVATE_KEY_SOR }}
+          port: ${{ secrets.VM_SOR_PORT }}
           script_stop: true
           script: |
             # 1. Definir directorio del proyecto
