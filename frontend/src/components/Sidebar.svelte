@@ -7,7 +7,8 @@
     Database,
     Cpu,
     User,
-    LogOut
+    LogOut,
+    X
   } from 'lucide-svelte';
   import { createEventDispatcher } from 'svelte';
 
@@ -18,7 +19,17 @@
 
   const dispatch = createEventDispatcher();
 
+  function closeSidebar() {
+    sidebarOpen = false;
+  }
+
+  function handleNav(tab) {
+    activeTab = tab;
+    closeSidebar();
+  }
+
   function handleLogoutClick() {
+    closeSidebar();
     if (typeof onLogout === 'function') {
       onLogout();
     } else {
@@ -26,6 +37,15 @@
     }
   }
 </script>
+
+<!-- Backdrop para cerrar en móvil -->
+{#if sidebarOpen}
+  <div 
+    class="sidebar-backdrop" 
+    on:click={closeSidebar} 
+    role="presentation"
+  ></div>
+{/if}
 
 <aside class="sidebar" class:open={sidebarOpen}>
   <div class="sidebar-header">
@@ -35,30 +55,40 @@
       </div>
       <h2>cPanel</h2>
     </div>
+
+    <!-- Botón cerrar exclusivo de móvil -->
+    <button 
+      class="sidebar-close-btn" 
+      on:click={closeSidebar} 
+      title="Cerrar menú"
+      type="button"
+    >
+      <X size={20} />
+    </button>
   </div>
 
   <nav class="sidebar-nav">
     <ul>
       <li class:active={activeTab === 'dashboard'}>
-        <a href="#dashboard" on:click|preventDefault={() => activeTab = 'dashboard'}>
+        <a href="#dashboard" on:click|preventDefault={() => handleNav('dashboard')}>
           <Activity size={18} />
           <span>Dashboard</span>
         </a>
       </li>
       <li class:active={activeTab === 'containers'}>
-        <a href="#containers" on:click|preventDefault={() => activeTab = 'containers'}>
+        <a href="#containers" on:click|preventDefault={() => handleNav('containers')}>
           <Package size={18} />
           <span>Contenedores</span>
         </a>
       </li>
       <li class:active={activeTab === 'terminal'}>
-        <a href="#terminal" on:click|preventDefault={() => activeTab = 'terminal'}>
+        <a href="#terminal" on:click|preventDefault={() => handleNav('terminal')}>
           <Terminal size={18} />
           <span>Terminal de Logs</span>
         </a>
       </li>
       <li class:active={activeTab === 'databases'}>
-        <a href="#databases" on:click|preventDefault={() => activeTab = 'databases'}>
+        <a href="#databases" on:click|preventDefault={() => handleNav('databases')}>
           <Database size={18} />
           <span>MariaDB Telemetry</span>
         </a>
@@ -98,18 +128,42 @@
 </aside>
 
 <style>
+  .sidebar-backdrop {
+    display: none;
+  }
+
   .sidebar {
     width: 260px;
     background: var(--sidebar-bg);
     border-right: 1px solid var(--card-border);
     display: flex;
     flex-direction: column;
-    transition: transform 0.3s ease;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 50;
+    box-sizing: border-box;
   }
 
   .sidebar-header {
-    padding: 2rem 1.5rem;
+    padding: 1.75rem 1.25rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .sidebar-close-btn {
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 8px;
+    transition: all 0.15s ease;
+  }
+
+  .sidebar-close-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .logo {
@@ -120,23 +174,27 @@
 
   .logo-icon-bg {
     background: var(--primary);
-    width: 36px; height: 36px;
+    width: 36px; 
+    height: 36px;
     border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 4px 15px rgba(2, 132, 199, 0.35);
   }
 
   .logo h2 {
     font-size: 1.25rem;
     font-weight: 700;
     margin: 0;
+    color: var(--text-main);
+    letter-spacing: -0.01em;
   }
 
   .sidebar-nav {
     flex: 1;
-    padding: 0 1rem;
+    padding: 0.5rem 0.85rem;
+    overflow-y: auto;
   }
 
   .sidebar-nav ul {
@@ -145,7 +203,7 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.4rem;
   }
 
   .sidebar-nav li a {
@@ -155,25 +213,29 @@
     padding: 0.75rem 1rem;
     color: var(--text-muted);
     text-decoration: none;
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     font-weight: 500;
     border-radius: 10px;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
   }
 
   .sidebar-nav li a:hover {
     color: var(--text-main);
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  :global(body.theme-light) .sidebar-nav li a:hover {
+    background: rgba(0, 0, 0, 0.04);
   }
 
   .sidebar-nav li.active a {
     color: #ffffff;
     background: var(--primary);
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+    box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
   }
 
   .sidebar-footer {
-    padding: 1.25rem 1rem;
+    padding: 1rem 0.85rem;
     border-top: 1px solid var(--card-border);
     display: flex;
     flex-direction: column;
@@ -181,17 +243,13 @@
   }
 
   .sidebar-user-card {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface-muted, rgba(255, 255, 255, 0.03));
     border: 1px solid var(--card-border);
     border-radius: 12px;
     padding: 0.75rem;
     display: flex;
     flex-direction: column;
     gap: 0.65rem;
-  }
-
-  :global(body.theme-light) .sidebar-user-card {
-    background: rgba(0, 0, 0, 0.02);
   }
 
   .user-info-row {
@@ -228,8 +286,8 @@
   }
 
   .user-role {
-    font-size: 0.7rem;
-    font-weight: 600;
+    font-size: 0.68rem;
+    font-weight: 700;
     color: var(--secondary);
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -261,10 +319,10 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface-muted, rgba(255, 255, 255, 0.03));
     padding: 0.5rem 0.75rem;
     border-radius: 20px;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: var(--text-muted);
     border: 1px solid var(--card-border);
   }
@@ -278,16 +336,39 @@
   }
 
   @media (max-width: 1024px) {
+    .sidebar-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 90;
+      animation: fadeInBackdrop 0.2s ease-out;
+    }
+
     .sidebar {
       position: fixed;
       top: 0;
       bottom: 0;
       left: 0;
+      width: 280px;
+      max-width: 85vw;
       transform: translateX(-100%);
+      z-index: 100;
+      box-shadow: 0 0 35px rgba(0, 0, 0, 0.8);
     }
 
     .sidebar.open {
       transform: translateX(0);
     }
+
+    .sidebar-close-btn {
+      display: flex;
+    }
+  }
+
+  @keyframes fadeInBackdrop {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 </style>

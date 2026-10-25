@@ -291,11 +291,11 @@
 
   /* Azure VM Telemetry Banner */
   .azure-hero-card {
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
-    border: 1px solid rgba(56, 189, 248, 0.2);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
     border-radius: 16px;
     padding: 1.5rem;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
@@ -307,7 +307,7 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--card-border);
     padding-bottom: 1rem;
   }
 
@@ -316,7 +316,7 @@
     align-items: center;
     gap: 8px;
     font-weight: 700;
-    color: #38bdf8;
+    color: var(--secondary);
     font-size: 1.05rem;
     letter-spacing: 0.02em;
   }
@@ -325,16 +325,16 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--surface-muted, rgba(255, 255, 255, 0.03));
     padding: 6px 14px;
     border-radius: 9999px;
     font-size: 0.8rem;
-    color: #cbd5e1;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+    border: 1px solid var(--card-border);
   }
 
   .sep {
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .status-live {
@@ -368,8 +368,8 @@
   }
 
   .telemetry-item {
-    background: rgba(15, 23, 42, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--surface-muted, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--card-border);
     border-radius: 12px;
     padding: 1rem;
     display: flex;
@@ -389,7 +389,7 @@
     gap: 6px;
     font-size: 0.82rem;
     font-weight: 600;
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   :global(.icon-cpu) { color: #38bdf8; }
@@ -400,7 +400,7 @@
   .val {
     font-size: 0.95rem;
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--text-main);
   }
 
   .progress-bar {
@@ -604,8 +604,8 @@
   }
 
   .container-mini-card {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--surface-muted, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--card-border);
     border-radius: 10px;
     padding: 12px;
     display: flex;
@@ -623,7 +623,7 @@
   .mini-name {
     font-weight: 600;
     font-size: 0.85rem;
-    color: #f1f5f9;
+    color: var(--text-main);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -652,15 +652,17 @@
     text-overflow: ellipsis;
     display: block;
     font-family: monospace;
+    color: var(--text-muted);
   }
 
   .empty-list-box {
     padding: 20px;
-    background: rgba(0, 0, 0, 0.15);
+    background: var(--surface-muted, rgba(255, 255, 255, 0.02));
     border-radius: 8px;
     text-align: center;
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 0.85rem;
+    border: 1px dashed var(--card-border);
   }
 
   .font-mono {
@@ -668,6 +670,46 @@
   }
 
   .text-muted {
-    color: var(--text-muted, #94a3b8);
+    color: var(--text-muted);
+  }
+
+  /* Mobile Responsive */
+  @media (max-width: 768px) {
+    .azure-hero-card,
+    .containers-overview-section {
+      padding: 1.15rem;
+      border-radius: 14px;
+    }
+
+    .telemetry-grid {
+      grid-template-columns: 1fr;
+      gap: 0.85rem;
+    }
+
+    .status-summary-grid {
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+    }
+
+    .quick-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .azure-badge-row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.65rem;
+    }
+
+    .specs-pill {
+      font-size: 0.72rem;
+      padding: 5px 10px;
+      flex-wrap: wrap;
+    }
+
+    .proportion-legend {
+      flex-wrap: wrap;
+      gap: 10px;
+    }
   }
 </style>

@@ -175,7 +175,7 @@
 
   .input-group input {
     width: 100%;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--surface-muted, rgba(0, 0, 0, 0.2));
     border: 1px solid var(--card-border);
     color: var(--text-main);
     padding: 0.9rem 1rem 0.9rem 2.8rem;
@@ -188,8 +188,8 @@
   .input-group input:focus {
     outline: none;
     border-color: var(--primary);
-    background: rgba(0, 0, 0, 0.3);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    background: transparent;
+    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.2);
   }
 
   /* Fixed CSS selectors for focus states without warnings */
@@ -272,5 +272,22 @@
     background: var(--danger-bg);
     border-color: rgba(239, 68, 68, 0.3);
     color: var(--danger);
+  }
+
+  /* Mobile Responsive */
+  @media (max-width: 640px) {
+    .glass-card {
+      padding: 1.25rem 1rem;
+      border-radius: 14px;
+    }
+
+    .card-header-styled {
+      margin-bottom: 1.25rem;
+    }
+
+    .deploy-form {
+      grid-template-columns: 1fr;
+      gap: 0.85rem;
+    }
   }
 </style>

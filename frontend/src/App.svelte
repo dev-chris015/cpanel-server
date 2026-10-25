@@ -190,14 +190,9 @@
   />
 {:else}
   <div class="layout">
-    <!-- Mobile Toggle -->
-    <button class="mobile-toggle" on:click={toggleSidebar} title="Abrir menú">
-      <Menu size={24} />
-    </button>
-
     <!-- Modular Sidebar -->
     <Sidebar 
-      {sidebarOpen} 
+      bind:sidebarOpen 
       bind:activeTab 
       {currentUser} 
       onLogout={handleLogout} 
@@ -207,9 +202,22 @@
     <!-- Main Content -->
     <main class="main-content">
       <header class="topbar">
-        <div>
-          <h1>{viewInfo.title}</h1>
-          <p class="text-muted">{viewInfo.subtitle}</p>
+        <div class="topbar-title-section">
+          <!-- Botón menú integrado en el header para móvil -->
+          <button 
+            class="mobile-toggle-btn" 
+            on:click={toggleSidebar} 
+            title="Abrir menú de navegación"
+            aria-label="Abrir menú"
+            type="button"
+          >
+            <Menu size={22} />
+          </button>
+
+          <div class="title-meta">
+            <h1>{viewInfo.title}</h1>
+            <p class="text-muted">{viewInfo.subtitle}</p>
+          </div>
         </div>
 
         <!-- Topbar Actions -->
@@ -217,7 +225,7 @@
           {#if currentUser}
             <div class="user-pill" title="Usuario autenticado">
               <span class="user-avatar-badge">
-                <User size={14} />
+                <User size={13} />
               </span>
               <span class="username">{currentUser.username}</span>
               {#if currentUser.role}
@@ -231,12 +239,13 @@
             class="theme-toggle-btn" 
             on:click={toggleTheme} 
             title="Cambiar tema ({currentTheme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'})"
+            type="button"
           >
             {#if currentTheme === 'dark'}
-              <Sun size={18} class="theme-icon sun-icon" />
+              <Sun size={17} class="theme-icon sun-icon" />
               <span class="theme-label">Claro</span>
             {:else}
-              <Moon size={18} class="theme-icon moon-icon" />
+              <Moon size={17} class="theme-icon moon-icon" />
               <span class="theme-label">Oscuro</span>
             {/if}
           </button>
@@ -246,6 +255,7 @@
             class="logout-btn" 
             on:click={handleLogout} 
             title="Cerrar sesión"
+            type="button"
           >
             <LogOut size={16} />
             <span class="logout-label">Salir</span>
@@ -283,21 +293,22 @@
 {/if}
 
 <style>
-  /* Base Variables and Resets */
+  /* Base Variables - True Full Black & Refined Light */
   :global(:root) {
-    --bg-dark: #090e17;
-    --sidebar-bg: #0d1524;
-    --card-bg: #111a2e;
-    --card-border: rgba(255, 255, 255, 0.08);
-    --text-main: #f8fafc;
-    --text-muted: #94a3b8;
+    --bg-dark: #000000;
+    --sidebar-bg: #09090b;
+    --card-bg: #121214;
+    --card-border: #222225;
+    --surface-muted: #18181b;
+    --text-main: #f4f4f5;
+    --text-muted: #a1a1aa;
     --primary: #0284c7;
     --primary-hover: #0369a1;
     --secondary: #38bdf8;
     --success: #10b981;
-    --success-bg: rgba(16, 185, 129, 0.1);
+    --success-bg: rgba(16, 185, 129, 0.12);
     --danger: #ef4444;
-    --danger-bg: rgba(239, 68, 68, 0.1);
+    --danger-bg: rgba(239, 68, 68, 0.12);
   }
 
   :global(body) {
@@ -309,6 +320,7 @@
     min-height: 100vh;
     overflow-x: hidden;
     transition: background-color 0.25s ease, color 0.25s ease;
+    -webkit-font-smoothing: antialiased;
   }
 
   /* Theme Light */
@@ -316,9 +328,17 @@
     --bg-dark: #f8fafc;
     --sidebar-bg: #ffffff;
     --card-bg: #ffffff;
-    --card-border: rgba(0, 0, 0, 0.08);
+    --card-border: #e2e8f0;
+    --surface-muted: #f1f5f9;
     --text-main: #0f172a;
     --text-muted: #64748b;
+    --primary: #0284c7;
+    --primary-hover: #0369a1;
+    --secondary: #0284c7;
+    --success: #059669;
+    --success-bg: rgba(16, 185, 129, 0.1);
+    --danger: #dc2626;
+    --danger-bg: rgba(239, 68, 68, 0.1);
   }
 
   .auth-loading-screen {
@@ -345,43 +365,84 @@
   .layout {
     display: flex;
     min-height: 100vh;
+    width: 100%;
+    overflow-x: hidden;
+    position: relative;
   }
 
   .main-content {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 2rem;
+    padding: 2rem 2.25rem;
     overflow-y: auto;
+    overflow-x: hidden;
     background: var(--bg-dark);
+    min-width: 0;
   }
 
   .topbar {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     margin-bottom: 2rem;
-    padding-bottom: 1rem;
+    padding-bottom: 1.25rem;
     border-bottom: 1px solid var(--card-border);
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .topbar-title-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .mobile-toggle-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    color: var(--text-main);
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+
+  .mobile-toggle-btn:hover {
+    border-color: var(--primary);
+  }
+
+  .title-meta {
+    min-width: 0;
   }
 
   .topbar h1 {
-    font-size: 1.75rem;
+    font-size: 1.7rem;
     font-weight: 700;
-    margin: 0 0 0.4rem 0;
+    margin: 0 0 0.35rem 0;
     color: var(--text-main);
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .text-muted {
     margin: 0;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     color: var(--text-muted);
   }
 
   .topbar-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
   }
 
@@ -426,17 +487,17 @@
   .theme-toggle-btn {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    padding: 8px 14px;
+    padding: 7px 13px;
     border-radius: 20px;
     color: var(--text-main);
     font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   }
 
   .theme-toggle-btn:hover {
@@ -449,7 +510,7 @@
     gap: 6px;
     background: rgba(239, 68, 68, 0.1);
     border: 1px solid rgba(239, 68, 68, 0.2);
-    padding: 8px 14px;
+    padding: 7px 13px;
     border-radius: 20px;
     color: #ef4444;
     font-size: 0.82rem;
@@ -471,20 +532,6 @@
     color: #38bdf8;
   }
 
-  .mobile-toggle {
-    display: none;
-    position: fixed;
-    top: 1rem;
-    right: 1rem;
-    z-index: 100;
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    color: var(--text-main);
-    padding: 0.5rem;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-
   @keyframes spin {
     from {
       transform: rotate(0deg);
@@ -494,20 +541,54 @@
     }
   }
 
+  /* Responsive Breakpoints */
   @media (max-width: 1024px) {
-    .mobile-toggle {
+    .mobile-toggle-btn {
       display: flex;
-      align-items: center;
-      justify-content: center;
     }
 
     .main-content {
-      padding: 1.25rem;
-      padding-top: 4.5rem;
+      padding: 1.25rem 1rem;
+    }
+
+    .topbar {
+      margin-bottom: 1.25rem;
+      padding-bottom: 1rem;
+    }
+
+    .topbar h1 {
+      font-size: 1.35rem;
+    }
+
+    .text-muted {
+      font-size: 0.8rem;
     }
   }
 
   @media (max-width: 640px) {
+    .main-content {
+      padding: 1rem 0.75rem;
+    }
+
+    .topbar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.75rem;
+    }
+
+    .topbar-actions {
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .user-pill {
+      padding: 4px 10px;
+    }
+
+    .role-tag {
+      display: none;
+    }
+
     .logout-label {
       display: none;
     }

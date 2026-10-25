@@ -113,7 +113,7 @@
     width: 100vw;
     height: 100vh;
     z-index: 9999;
-    background: #0b1120;
+    background: #000000;
     padding: 16px;
     box-sizing: border-box;
   }
@@ -122,8 +122,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #111827;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
     border-radius: 10px;
     padding: 10px 16px;
     flex-wrap: wrap;
@@ -143,7 +143,7 @@
     gap: 8px;
     font-size: 0.9rem;
     font-weight: 600;
-    color: #e2e8f0;
+    color: var(--text-main);
   }
 
   :global(.term-icon) {
@@ -154,29 +154,29 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    background: rgba(15, 23, 42, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--surface-muted);
+    border: 1px solid var(--card-border);
     border-radius: 8px;
     padding: 6px 12px;
   }
 
   :global(.select-icon) {
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .container-select {
     background: transparent;
     border: none;
     outline: none;
-    color: #38bdf8;
+    color: var(--secondary);
     font-size: 0.85rem;
     font-weight: 500;
     cursor: pointer;
   }
 
   .container-select option {
-    background: #0f172a;
-    color: #f8fafc;
+    background: var(--card-bg);
+    color: var(--text-main);
   }
 
   .toolbar-right {
@@ -210,5 +210,46 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+  }
+
+  /* Mobile Responsive */
+  @media (max-width: 768px) {
+    .terminal-view-wrapper {
+      height: calc(100vh - 200px);
+      min-height: 380px;
+    }
+
+    .terminal-toolbar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+      padding: 10px 12px;
+    }
+
+    .toolbar-left {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .selector-box {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .container-select {
+      width: 100%;
+    }
+
+    .toolbar-right {
+      width: 100%;
+    }
+
+    .btn-tool {
+      width: 100%;
+      justify-content: center;
+      padding: 8px 12px;
+    }
   }
 </style>

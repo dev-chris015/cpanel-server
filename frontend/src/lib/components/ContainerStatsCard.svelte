@@ -172,8 +172,8 @@
 
 <style>
   .stats-card {
-    background: #1e293b;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--card-bg, #121214);
+    border: 1px solid var(--card-border, #222225);
     border-radius: 12px;
     padding: 16px;
     display: flex;
@@ -191,7 +191,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--card-border, rgba(255, 255, 255, 0.06));
     padding-bottom: 12px;
   }
 
@@ -205,7 +205,7 @@
     margin: 0;
     font-size: 0.95rem;
     font-weight: 600;
-    color: #f1f5f9;
+    color: var(--text-main, #f1f5f9);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -345,7 +345,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--surface-muted, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--card-border, rgba(255, 255, 255, 0.04));
     border-radius: 8px;
     padding: 8px 12px;
   }
@@ -358,14 +359,14 @@
   }
 
   .net-label {
-    color: #94a3b8;
+    color: var(--text-muted, #94a3b8);
   }
 
   :global(.arrow-rx) { color: #38bdf8; }
   :global(.arrow-tx) { color: #34d399; }
 
   .net-val {
-    color: #e2e8f0;
+    color: var(--text-main, #e2e8f0);
     font-weight: 600;
   }
 </style>

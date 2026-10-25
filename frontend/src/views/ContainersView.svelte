@@ -338,8 +338,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    background: rgba(15, 23, 42, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
     border-radius: 10px;
     padding: 8px 14px;
     flex: 1;
@@ -347,14 +347,14 @@
   }
 
   :global(.search-icon) {
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   .search-box input {
     background: transparent;
     border: none;
     outline: none;
-    color: #f8fafc;
+    color: var(--text-main);
     font-size: 0.85rem;
     width: 100%;
   }
@@ -442,18 +442,18 @@
 
   .containers-card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 1.5rem;
   }
 
   .container-manage-card {
-    background: #182234;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
     border-radius: 14px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   }
 
   .card-controls {
@@ -461,8 +461,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 10px 14px;
-    background: #0f172a;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--surface-muted);
+    border-top: 1px solid var(--card-border);
     flex-wrap: wrap;
     gap: 8px;
   }
@@ -478,9 +478,9 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 5px 10px;
+    padding: 6px 12px;
     border-radius: 6px;
-    font-size: 0.75rem;
+    font-size: 0.78rem;
     font-weight: 600;
     cursor: pointer;
     border: 1px solid transparent;
@@ -523,12 +523,12 @@
   .btn-restart:hover { background: rgba(59, 130, 246, 0.25); }
 
   .btn-inspect {
-    background: rgba(255, 255, 255, 0.05);
-    color: #94a3b8;
-    border-color: rgba(255, 255, 255, 0.1);
+    background: var(--surface-muted, rgba(255, 255, 255, 0.05));
+    color: var(--text-muted);
+    border: 1px solid var(--card-border);
   }
   .btn-inspect:hover {
-    color: #38bdf8;
+    color: var(--secondary);
     background: rgba(56, 189, 248, 0.1);
     border-color: rgba(56, 189, 248, 0.3);
   }
@@ -540,23 +540,24 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(15, 23, 42, 0.8);
+    background: rgba(0, 0, 0, 0.75);
     backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
     padding: 16px;
+    box-sizing: border-box;
   }
 
   .confirm-dialog {
-    background: #1e293b;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
     padding: 20px;
     width: 100%;
     max-width: 440px;
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5);
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -572,13 +573,13 @@
   .confirm-header h4 {
     margin: 0;
     font-size: 1.05rem;
-    color: #f8fafc;
+    color: var(--text-main);
   }
 
   .confirm-text {
     margin: 0;
     font-size: 0.9rem;
-    color: #cbd5e1;
+    color: var(--text-muted);
     line-height: 1.4;
   }
 
@@ -590,9 +591,9 @@
   }
 
   .btn-cancel {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #94a3b8;
+    background: var(--surface-muted);
+    border: 1px solid var(--card-border);
+    color: var(--text-muted);
     padding: 7px 14px;
     border-radius: 6px;
     font-size: 0.85rem;
@@ -600,8 +601,8 @@
   }
 
   .btn-cancel:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #f1f5f9;
+    color: var(--text-main);
+    border-color: var(--primary);
   }
 
   .btn-confirm-action {
@@ -624,6 +625,59 @@
   }
 
   .text-muted {
-    color: #94a3b8;
+    color: var(--text-muted);
+  }
+
+  /* Mobile Responsive */
+  @media (max-width: 768px) {
+    .action-bar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.75rem;
+    }
+
+    .search-box {
+      max-width: 100%;
+    }
+
+    .bar-actions {
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .btn-refresh, .btn-deploy-toggle {
+      flex: 1;
+      justify-content: center;
+      padding: 9px 12px;
+    }
+
+    .containers-card-grid {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+
+    .card-controls {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+
+    .control-actions {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      width: 100%;
+    }
+
+    .btn-action {
+      justify-content: center;
+      padding: 8px 10px;
+    }
+
+    .btn-inspect {
+      width: 100%;
+      justify-content: center;
+      padding: 8px 10px;
+    }
   }
 </style>

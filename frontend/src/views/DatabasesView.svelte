@@ -244,8 +244,8 @@
   }
 
   .banner-card {
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
     border-radius: 16px;
     padding: 1.5rem;
     display: flex;
@@ -253,7 +253,7 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 1rem;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   }
 
   .banner-left {
@@ -276,13 +276,13 @@
   .banner-title {
     margin: 0 0 4px 0;
     font-size: 1.15rem;
-    color: #f8fafc;
+    color: var(--text-main);
   }
 
   .banner-desc {
     margin: 0;
     font-size: 0.85rem;
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   .banner-actions {
@@ -355,14 +355,14 @@
   }
 
   .metric-card {
-    background: #1e293b;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
     border-radius: 14px;
     padding: 1.25rem;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   }
 
   .metric-head {
@@ -377,12 +377,12 @@
     gap: 6px;
     font-size: 0.85rem;
     font-weight: 600;
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   .metric-sub {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--text-muted);
   }
 
   :global(.icon-blue) { color: #38bdf8; }
@@ -399,24 +399,24 @@
   .metric-number {
     font-size: 2rem;
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--text-main);
   }
 
   .metric-unit {
     font-size: 0.85rem;
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   .metric-footer {
     font-size: 0.78rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid var(--card-border);
     padding-top: 8px;
   }
 
   /* Section Styles */
   .section-container {
-    background: #111827;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
     border-radius: 16px;
     padding: 1.5rem;
     display: flex;
@@ -439,7 +439,7 @@
   .sec-title-group h4 {
     margin: 0;
     font-size: 1.05rem;
-    color: #f1f5f9;
+    color: var(--text-main);
   }
 
   .count-pill {
@@ -458,8 +458,8 @@
   }
 
   .wp-card {
-    background: #1e293b;
-    border: 1px solid rgba(56, 189, 248, 0.2);
+    background: var(--surface-muted);
+    border: 1px solid var(--card-border);
     border-radius: 12px;
     padding: 1.25rem;
     display: flex;
@@ -491,7 +491,7 @@
   .wp-dbname {
     font-size: 0.95rem;
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--text-main);
   }
 
   .wp-card-body {
@@ -503,7 +503,7 @@
 
   .wp-label {
     font-size: 0.78rem;
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   .wp-size-row {
@@ -520,7 +520,7 @@
 
   .wp-size-unit {
     font-size: 0.85rem;
-    color: #94a3b8;
+    color: var(--text-muted);
     font-weight: 600;
   }
 
@@ -546,6 +546,7 @@
 
   .other-dbs-table-wrap {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .dbs-table {
@@ -557,15 +558,15 @@
 
   .dbs-table th {
     padding: 10px 12px;
-    color: #94a3b8;
+    color: var(--text-muted);
     font-weight: 600;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--card-border);
   }
 
   .dbs-table td {
     padding: 10px 12px;
-    color: #e2e8f0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    border-bottom: 1px solid var(--card-border);
   }
 
   .font-bold {
@@ -589,10 +590,11 @@
   .empty-dbs {
     padding: 24px;
     text-align: center;
-    color: #64748b;
+    color: var(--text-muted);
     font-size: 0.9rem;
-    background: rgba(0, 0, 0, 0.15);
+    background: var(--surface-muted);
     border-radius: 8px;
+    border: 1px dashed var(--card-border);
   }
 
   .empty-dbs code {
@@ -600,6 +602,37 @@
     background: rgba(56, 189, 248, 0.1);
     padding: 2px 6px;
     border-radius: 4px;
+  }
+
+  /* Mobile Responsive */
+  @media (max-width: 768px) {
+    .banner-card {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 1rem;
+      padding: 1.15rem;
+      border-radius: 14px;
+    }
+
+    .banner-actions {
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .metrics-grid {
+      grid-template-columns: 1fr;
+      gap: 0.85rem;
+    }
+
+    .wp-grid {
+      grid-template-columns: 1fr;
+      gap: 0.85rem;
+    }
+
+    .section-container {
+      padding: 1.15rem;
+      border-radius: 14px;
+    }
   }
 
   .font-mono {

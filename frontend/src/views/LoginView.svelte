@@ -478,14 +478,22 @@
   }
 
   @media (max-width: 480px) {
+    .login-wrapper {
+      padding: 1rem;
+    }
+
     .login-card {
-      padding: 1.75rem;
-      border-radius: 12px;
+      padding: 1.5rem 1.25rem;
+      border-radius: 14px;
     }
 
     .theme-bar {
       top: 1rem;
       right: 1rem;
+    }
+
+    .login-header h2 {
+      font-size: 1.4rem;
     }
   }
 </style>

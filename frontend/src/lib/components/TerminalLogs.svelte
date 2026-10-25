@@ -23,11 +23,11 @@
       fontSize: 13,
       lineHeight: 1.25,
       theme: {
-        background: '#0f172a',
+        background: '#000000',
         foreground: '#f8fafc',
         cursor: '#38bdf8',
         selectionBackground: 'rgba(56, 189, 248, 0.3)',
-        black: '#0f172a',
+        black: '#000000',
         red: '#ef4444',
         green: '#22c55e',
         yellow: '#eab308',
@@ -178,13 +178,13 @@
   .terminal-logs-card {
     display: flex;
     flex-direction: column;
-    background: #0b1120;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--card-bg, #121214);
+    border: 1px solid var(--card-border, #222225);
     border-radius: 12px;
     overflow: hidden;
     height: 100%;
     min-height: 380px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   }
 
   .terminal-header {
@@ -192,15 +192,15 @@
     justify-content: space-between;
     align-items: center;
     padding: 10px 16px;
-    background: #111827;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--surface-muted, #18181b);
+    border-bottom: 1px solid var(--card-border, rgba(255, 255, 255, 0.06));
   }
 
   .header-left {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #e2e8f0;
+    color: var(--text-main, #e2e8f0);
     font-size: 0.85rem;
   }
 
@@ -238,10 +238,10 @@
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--surface-muted, rgba(255, 255, 255, 0.05));
+    border: 1px solid var(--card-border, rgba(255, 255, 255, 0.1));
     border-radius: 6px;
-    color: #94a3b8;
+    color: var(--text-muted, #94a3b8);
     font-size: 0.75rem;
     font-weight: 500;
     cursor: pointer;
@@ -257,7 +257,7 @@
   .terminal-viewport {
     flex: 1;
     padding: 12px;
-    background: #0f172a;
+    background: #000000;
     min-height: 320px;
     overflow: hidden;
   }
@@ -267,6 +267,6 @@
   }
 
   :global(.terminal-viewport .xterm-viewport) {
-    background-color: #0f172a !important;
+    background-color: #000000 !important;
   }
 </style>
