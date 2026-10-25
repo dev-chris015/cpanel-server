@@ -8,6 +8,7 @@ on:
 
 jobs:
   build-and-test:
+    name: Build & Validate
     runs-on: ubuntu-latest
 
     steps:
@@ -29,3 +30,44 @@ jobs:
           cd frontend
           npm install
           npm run build
+
+  deploy:
+    name: Deploy to Azure VM
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    # Solo desplegar en push a la rama principal (no en pull requests)
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+
+    steps:
+      - name: Desplegar en Azure VM vía SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USER }}
+          key: ${{ secrets.AZURE_VM_SSH_KEY }}
+          port: ${{ secrets.AZURE_VM_PORT || 22 }}
+          script_stop: true
+          script: |
+            # 1. Definir directorio del proyecto
+            PROJECT_DIR="$HOME/cpanel-server"
+
+            # Si el directorio no existe, clonar el repositorio
+            if [ ! -d "$PROJECT_DIR" ]; then
+              git clone "https://github.com/${{ github.repository }}.git" "$PROJECT_DIR"
+            fi
+
+            cd "$PROJECT_DIR"
+
+            # 2. Asegurar que la red externa de docker server-net existe
+            docker network inspect server-net >/dev/null 2>&1 || docker network create server-net
+
+            # 3. Descargar cambios más recientes
+            git fetch origin master
+            git reset --hard origin/master
+
+            # 4. Reconstruir y levantar servicios con Docker Compose
+            docker compose down
+            docker compose up -d --build --remove-orphans
+
+            # 5. Limpieza de imágenes huérfanas
+            docker image prune -f
