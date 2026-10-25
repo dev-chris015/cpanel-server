@@ -4,10 +4,13 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { Server } from 'socket.io';
 
+import authRoutes from './routes/auth.routes.js';
 import containerRoutes from './routes/containers.routes.js';
 import databaseRoutes from './routes/databases.routes.js';
 import systemRoutes from './routes/system.routes.js';
 import deployRoutes from './routes/deploy.js';
+
+import { authenticateToken, socketAuthMiddleware } from './middleware/auth.js';
 
 import { registerLogsSocket } from './sockets/logs.socket.js';
 import { registerStatsSocket } from './sockets/stats.socket.js';
@@ -28,10 +31,14 @@ app.get('/api/health', (req, res) => {
 });
 
 // Rutas REST
-app.use('/api/containers', containerRoutes);
-app.use('/api/databases', databaseRoutes);
-app.use('/api/system', systemRoutes);
-app.use('/api/deploy', deployRoutes);
+// Rutas públicas
+app.use('/api/auth', authRoutes);
+
+// Rutas protegidas
+app.use('/api/containers', authenticateToken, containerRoutes);
+app.use('/api/databases', authenticateToken, databaseRoutes);
+app.use('/api/system', authenticateToken, systemRoutes);
+app.use('/api/deploy', authenticateToken, deployRoutes);
 
 // Servidor HTTP + WebSockets (Socket.io)
 const server = http.createServer(app);
@@ -41,6 +48,9 @@ const io = new Server(server, {
     methods: ['GET', 'POST']
   }
 });
+
+// Middleware de autenticación para Socket.io
+io.use(socketAuthMiddleware);
 
 io.on('connection', (socket) => {
   // Registrar manejadores de eventos socket
