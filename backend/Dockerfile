@@ -8,6 +8,9 @@ RUN npm install --production
 
 COPY . .
 
+# Acceso como root para interactuar con /var/run/docker.sock
+USER root
+
 EXPOSE 5000
 
 ENV PORT=5000
