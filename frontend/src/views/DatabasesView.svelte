@@ -48,7 +48,7 @@
 
   // Identificar si una base de datos es wp_site
   function isWpSite(dbName) {
-    return /^wp_site_\d+/i.test(dbName);
+    return /^(wp_site|wp_db|wordpress)/i.test(dbName);
   }
 
   $: wpDatabases = (telemetry?.databases || []).filter(d => isWpSite(d.database));

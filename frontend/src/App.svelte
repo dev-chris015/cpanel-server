@@ -196,7 +196,13 @@
     </button>
 
     <!-- Modular Sidebar -->
-    <Sidebar {sidebarOpen} bind:activeTab />
+    <Sidebar 
+      {sidebarOpen} 
+      bind:activeTab 
+      {currentUser} 
+      onLogout={handleLogout} 
+      on:logout={handleLogout} 
+    />
 
     <!-- Main Content -->
     <main class="main-content">
