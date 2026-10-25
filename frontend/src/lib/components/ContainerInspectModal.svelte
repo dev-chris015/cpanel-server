@@ -214,7 +214,6 @@
     width: 100vw;
     height: 100vh;
     background: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;

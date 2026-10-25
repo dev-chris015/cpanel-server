@@ -134,9 +134,15 @@
   }
 
   .icon-wrapper.blue {
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    background: #082f49;
+    color: #38bdf8;
+    border: 1px solid #0284c7;
+  }
+
+  :global(body.theme-light) .icon-wrapper.blue {
+    background: #e0f2fe;
+    color: #0284c7;
+    border-color: #bae6fd;
   }
 
   .card-header-styled h3 {
@@ -257,10 +263,10 @@
   .alert {
     margin-top: 1.5rem;
     padding: 1rem;
-    background: var(--success-bg);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: #064e3b;
+    border: 1px solid #059669;
     border-radius: 12px;
-    color: var(--success);
+    color: #a7f3d0;
     font-size: 0.9rem;
     display: flex;
     align-items: center;
@@ -269,9 +275,21 @@
   }
 
   .alert.error {
-    background: var(--danger-bg);
-    border-color: rgba(239, 68, 68, 0.3);
-    color: var(--danger);
+    background: #450a0a;
+    border-color: #dc2626;
+    color: #fecaca;
+  }
+
+  :global(body.theme-light) .alert {
+    background: #d1fae5;
+    border-color: #34d399;
+    color: #065f46;
+  }
+
+  :global(body.theme-light) .alert.error {
+    background: #fee2e2;
+    border-color: #f87171;
+    color: #991b1b;
   }
 
   /* Mobile Responsive */

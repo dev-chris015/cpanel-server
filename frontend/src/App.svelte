@@ -194,9 +194,6 @@
     <Sidebar 
       bind:sidebarOpen 
       bind:activeTab 
-      {currentUser} 
-      onLogout={handleLogout} 
-      on:logout={handleLogout} 
     />
 
     <!-- Main Content -->
@@ -228,9 +225,6 @@
                 <User size={13} />
               </span>
               <span class="username">{currentUser.username}</span>
-              {#if currentUser.role}
-                <span class="role-tag">{currentUser.role}</span>
-              {/if}
             </div>
           {/if}
 
@@ -356,7 +350,7 @@
   .auth-spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid rgba(2, 132, 199, 0.2);
+    border: 3px solid #27272a;
     border-top-color: var(--primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -458,8 +452,8 @@
   }
 
   .user-avatar-badge {
-    background: rgba(2, 132, 199, 0.15);
-    color: var(--primary);
+    background: #0284c7;
+    color: #ffffff;
     width: 22px;
     height: 22px;
     border-radius: 50%;
@@ -471,17 +465,6 @@
   .username {
     font-weight: 600;
     color: var(--text-main);
-  }
-
-  .role-tag {
-    font-size: 0.68rem;
-    background: rgba(2, 132, 199, 0.15);
-    color: var(--secondary);
-    padding: 2px 6px;
-    border-radius: 4px;
-    text-transform: uppercase;
-    font-weight: 700;
-    letter-spacing: 0.03em;
   }
 
   .theme-toggle-btn {
@@ -497,7 +480,6 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   }
 
   .theme-toggle-btn:hover {
@@ -508,11 +490,11 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.2);
+    background: #270d0f;
+    border: 1px solid #7f1d1d;
     padding: 7px 13px;
     border-radius: 20px;
-    color: #ef4444;
+    color: #fca5a5;
     font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
@@ -520,8 +502,20 @@
   }
 
   .logout-btn:hover {
-    background: rgba(239, 68, 68, 0.2);
+    background: #991b1b;
     border-color: #ef4444;
+    color: #ffffff;
+  }
+
+  :global(body.theme-light) .logout-btn {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #b91c1c;
+  }
+
+  :global(body.theme-light) .logout-btn:hover {
+    background: #dc2626;
+    color: #ffffff;
   }
 
   :global(.sun-icon) {
@@ -583,10 +577,6 @@
 
     .user-pill {
       padding: 4px 10px;
-    }
-
-    .role-tag {
-      display: none;
     }
 
     .logout-label {

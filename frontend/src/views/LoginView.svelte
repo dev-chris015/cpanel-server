@@ -205,6 +205,13 @@
     </form>
 
     <div class="login-footer">
+      <div class="credentials-hint">
+        <span class="hint-label">Usuario por defecto:</span>
+        <code>superadmin</code>
+        <span class="hint-sep">•</span>
+        <span class="hint-label">Clave:</span>
+        <code>nara5140</code>
+      </div>
       <div class="security-note">
         <ShieldCheck size={14} />
         <span>Autenticación JWT cifrada con expiración de 7 días</span>
@@ -220,7 +227,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: radial-gradient(circle at 50% 15%, rgba(2, 132, 199, 0.15), transparent 50%), var(--bg-dark);
+    background: var(--bg-dark);
     padding: 1.5rem;
     box-sizing: border-box;
     position: relative;
@@ -245,7 +252,6 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 
   .theme-btn:hover {
@@ -267,8 +273,6 @@
     border: 1px solid var(--card-border);
     border-radius: 16px;
     padding: 2.5rem;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(10px);
     box-sizing: border-box;
     transition: all 0.25s ease;
   }
@@ -285,14 +289,13 @@
   }
 
   .logo-icon-bg {
-    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+    background: var(--primary);
     width: 56px;
     height: 56px;
     border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 24px rgba(2, 132, 199, 0.35);
   }
 
   .login-header h2 {
@@ -314,14 +317,20 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    background: rgba(239, 68, 68, 0.12);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #f87171;
+    background: #270d0f;
+    border: 1px solid #7f1d1d;
+    color: #fca5a5;
     padding: 0.85rem 1rem;
     border-radius: 10px;
     font-size: 0.88rem;
     margin-bottom: 1.5rem;
     animation: fadeIn 0.2s ease-in-out;
+  }
+
+  :global(body.theme-light) .error-banner {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #b91c1c;
   }
 
   :global(.error-icon) {
@@ -362,7 +371,7 @@
 
   .input-container input {
     width: 100%;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--surface-muted);
     border: 1px solid var(--card-border);
     border-radius: 10px;
     padding: 0.75rem 2.5rem 0.75rem 2.6rem;
@@ -373,14 +382,9 @@
     box-sizing: border-box;
   }
 
-  :global(body.theme-light) .input-container input {
-    background: rgba(0, 0, 0, 0.02);
-  }
-
   .input-container input:focus {
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.2);
-    background: transparent;
+    background: var(--surface-muted);
   }
 
   .input-container input:disabled {
@@ -447,13 +451,40 @@
     text-align: center;
     border-top: 1px solid var(--card-border);
     padding-top: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .credentials-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+    background: var(--surface-muted);
+    border: 1px solid var(--card-border);
+    padding: 6px 12px;
+    border-radius: 8px;
+  }
+
+  .credentials-hint code {
+    color: var(--secondary);
+    font-weight: 700;
+  }
+
+  .hint-sep {
+    color: var(--card-border);
   }
 
   .security-note {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     color: var(--text-muted);
   }
 

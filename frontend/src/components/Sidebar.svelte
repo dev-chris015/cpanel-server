@@ -6,18 +6,11 @@
     Package,
     Database,
     Cpu,
-    User,
-    LogOut,
     X
   } from 'lucide-svelte';
-  import { createEventDispatcher } from 'svelte';
 
   export let sidebarOpen = false;
   export let activeTab = 'dashboard';
-  export let currentUser = null;
-  export let onLogout = null;
-
-  const dispatch = createEventDispatcher();
 
   function closeSidebar() {
     sidebarOpen = false;
@@ -26,15 +19,6 @@
   function handleNav(tab) {
     activeTab = tab;
     closeSidebar();
-  }
-
-  function handleLogoutClick() {
-    closeSidebar();
-    if (typeof onLogout === 'function') {
-      onLogout();
-    } else {
-      dispatch('logout');
-    }
   }
 </script>
 
@@ -97,28 +81,6 @@
   </nav>
 
   <div class="sidebar-footer">
-    <!-- Sección de usuario activo y botón Cerrar Sesión -->
-    <div class="sidebar-user-card">
-      <div class="user-info-row">
-        <div class="user-avatar">
-          <User size={16} />
-        </div>
-        <div class="user-meta">
-          <span class="user-name">{currentUser?.username || 'Admin'}</span>
-          <span class="user-role">{currentUser?.role || 'Superadmin'}</span>
-        </div>
-      </div>
-      <button 
-        class="sidebar-logout-btn" 
-        on:click={handleLogoutClick} 
-        title="Cerrar sesión"
-        type="button"
-      >
-        <LogOut size={15} />
-        <span>Cerrar Sesión</span>
-      </button>
-    </div>
-
     <div class="status-pill">
       <span class="dot"></span>
       <Cpu size={14} />
@@ -221,11 +183,7 @@
 
   .sidebar-nav li a:hover {
     color: var(--text-main);
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  :global(body.theme-light) .sidebar-nav li a:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: var(--surface-muted);
   }
 
   .sidebar-nav li.active a {
@@ -235,91 +193,15 @@
   }
 
   .sidebar-footer {
-    padding: 1rem 0.85rem;
+    padding: 1.25rem 1rem;
     border-top: 1px solid var(--card-border);
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .sidebar-user-card {
-    background: var(--surface-muted, rgba(255, 255, 255, 0.03));
-    border: 1px solid var(--card-border);
-    border-radius: 12px;
-    padding: 0.75rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.65rem;
-  }
-
-  .user-info-row {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-  }
-
-  .user-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: rgba(2, 132, 199, 0.15);
-    color: var(--primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .user-meta {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .user-name {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text-main);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .user-role {
-    font-size: 0.68rem;
-    font-weight: 700;
-    color: var(--secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-  }
-
-  .sidebar-logout-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.45rem 0.65rem;
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.2);
-    border-radius: 8px;
-    color: #ef4444;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .sidebar-logout-btn:hover {
-    background: rgba(239, 68, 68, 0.2);
-    border-color: #ef4444;
   }
 
   .status-pill {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    background: var(--surface-muted, rgba(255, 255, 255, 0.03));
+    background: var(--surface-muted);
     padding: 0.5rem 0.75rem;
     border-radius: 20px;
     font-size: 0.78rem;
@@ -332,7 +214,6 @@
     height: 8px;
     background: var(--success);
     border-radius: 50%;
-    box-shadow: 0 0 8px var(--success);
   }
 
   @media (max-width: 1024px) {
@@ -340,8 +221,7 @@
       display: block;
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(4px);
+      background: rgba(0, 0, 0, 0.75);
       z-index: 90;
       animation: fadeInBackdrop 0.2s ease-out;
     }
