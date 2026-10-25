@@ -35,7 +35,6 @@ jobs:
     name: Deploy to Azure VM
     runs-on: ubuntu-latest
     needs: build-and-test
-    # Solo desplegar en push a la rama principal (no en pull requests)
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
 
     steps:
@@ -48,27 +47,20 @@ jobs:
           port: ${{ secrets.VM_SOR_PORT }}
           script_stop: true
           script: |
-            # 1. Definir directorio del proyecto
-            PROJECT_DIR="/home/azureuser/server/cpanel-server"
+            # 1. Rutas clave
+            SERVER_DIR="/home/azureuser/server"
+            PROJECT_DIR="$SERVER_DIR/cpanel-server"
 
-            # Si el directorio no existe, clonar el repositorio
-            if [ ! -d "$PROJECT_DIR" ]; then
-              mkdir -p /home/azureuser/server
-              git clone "https://github.com/${{ github.repository }}.git" "$PROJECT_DIR"
-            fi
-
+            # 2. Descargar últimos cambios en cpanel-server
             cd "$PROJECT_DIR"
-
-            # 2. Asegurar que la red externa de docker server-net existe
-            docker network inspect server-net >/dev/null 2>&1 || docker network create server-net
-
-            # 3. Descargar cambios más recientes
             git fetch origin master
             git reset --hard origin/master
 
-            # 4. Reconstruir y levantar servicios con Docker Compose
-            docker compose down
-            docker compose up -d --build --remove-orphans
+            # 3. Orquestar desde la raíz del servidor
+            cd "$SERVER_DIR"
 
-            # 5. Limpieza de imágenes huérfanas
+            # Recompilar y reiniciar solo los contenedores de cPanel sin tocar MariaDB, Checkmk ni WordPress
+            docker compose up -d --build --no-deps cpanel-backend cpanel-frontend
+
+            # 4. Limpieza de capas viejas
             docker image prune -f
