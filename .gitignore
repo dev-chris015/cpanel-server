@@ -1,10 +1,18 @@
 # modulos
-node_modules
-.vscode
-frontend/dist
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+.vscode/
+
+# compilación y distribución
+dist/
+build/
 
 # variables de entorno locales
 .env
 .env.local
 *.env
 !*.env.example
+
+# archivos de prueba locales
+backend/src/config/db-test.js
