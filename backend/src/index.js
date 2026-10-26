@@ -59,8 +59,16 @@ io.on('connection', (socket) => {
   registerContainerStatsSocket(io, socket);
 });
 
-server.listen(PORT, () => {
-  console.log(`Backend de cPanel corriendo en el puerto ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Backend de cPanel corriendo en http://0.0.0.0:${PORT}`);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Error no capturado (uncaughtException):', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Promesa rechazada no manejada (unhandledRejection):', reason);
 });
 
 export { app, server, io };
