@@ -135,7 +135,7 @@
             id="username"
             type="text"
             bind:value={username}
-            placeholder="superadmin"
+            placeholder="Usuario"
             disabled={loading}
             autocomplete="username"
             on:keydown={handleKeyDown}
@@ -205,13 +205,6 @@
     </form>
 
     <div class="login-footer">
-      <div class="credentials-hint">
-        <span class="hint-label">Usuario por defecto:</span>
-        <code>superadmin</code>
-        <span class="hint-sep">•</span>
-        <span class="hint-label">Clave:</span>
-        <code>nara5140</code>
-      </div>
       <div class="security-note">
         <ShieldCheck size={14} />
         <span>Autenticación JWT cifrada con expiración de 7 días</span>
@@ -454,29 +447,6 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-  }
-
-  .credentials-hint {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    flex-wrap: wrap;
-    background: var(--surface-muted);
-    border: 1px solid var(--card-border);
-    padding: 6px 12px;
-    border-radius: 8px;
-  }
-
-  .credentials-hint code {
-    color: var(--secondary);
-    font-weight: 700;
-  }
-
-  .hint-sep {
-    color: var(--card-border);
   }
 
   .security-note {
