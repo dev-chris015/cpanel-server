@@ -67,8 +67,9 @@
   }
 
   function navigateTo(tab) {
-    activeTab = tab;
-    dispatch('navigate', tab);
+    const targetTab = tab === 'containers' ? 'sites' : tab;
+    activeTab = targetTab;
+    dispatch('navigate', targetTab);
   }
 
   onMount(() => {
