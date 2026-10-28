@@ -9,6 +9,7 @@ import containerRoutes from './routes/containers.routes.js';
 import databaseRoutes from './routes/databases.routes.js';
 import systemRoutes from './routes/system.routes.js';
 import deployRoutes from './routes/deploy.js';
+import proxyRoutes from './routes/proxy.routes.js';
 
 import { authenticateToken, socketAuthMiddleware } from './middleware/auth.js';
 
@@ -39,6 +40,7 @@ app.use('/api/containers', authenticateToken, containerRoutes);
 app.use('/api/databases', authenticateToken, databaseRoutes);
 app.use('/api/system', authenticateToken, systemRoutes);
 app.use('/api/deploy', authenticateToken, deployRoutes);
+app.use('/api/proxy', authenticateToken, proxyRoutes);
 
 // Servidor HTTP + WebSockets (Socket.io)
 const server = http.createServer(app);
