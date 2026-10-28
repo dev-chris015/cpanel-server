@@ -261,6 +261,8 @@
         <DashboardView 
           {containers}
           {fetchContainers}
+          bind:activeTab
+          on:navigate={(e) => activeTab = e.detail}
         />
       {:else if activeTab === 'containers'}
         <ContainersView 
