@@ -16,6 +16,7 @@ import { authenticateToken, socketAuthMiddleware } from './middleware/auth.js';
 import { registerLogsSocket } from './sockets/logs.socket.js';
 import { registerStatsSocket } from './sockets/stats.socket.js';
 import { registerContainerStatsSocket } from './sockets/container-stats.socket.js';
+import { registerTerminalSocket } from './sockets/terminal.socket.js';
 
 dotenv.config();
 
@@ -59,6 +60,7 @@ io.on('connection', (socket) => {
   registerLogsSocket(io, socket);
   registerStatsSocket(io, socket);
   registerContainerStatsSocket(io, socket);
+  registerTerminalSocket(io, socket);
 });
 
 server.listen(PORT, '0.0.0.0', () => {
