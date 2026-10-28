@@ -1,20 +1,30 @@
 <script>
   import { onMount } from 'svelte';
-  import { Terminal, Layers, RefreshCw, Maximize2, Minimize2 } from 'lucide-svelte';
-  import TerminalLogs from '../lib/components/TerminalLogs.svelte';
+  import { 
+    Terminal, 
+    Layers, 
+    RefreshCw, 
+    Maximize2, 
+    Minimize2,
+    Trash2,
+    Play,
+    Square
+  } from 'lucide-svelte';
+  import XtermTerminal from '../lib/components/XtermTerminal.svelte';
 
   export let containers = [];
 
   let selectedContainerId = '';
   let selectedContainerName = '';
   let isFullscreen = false;
-  let terminalLogsRef;
+  let terminalRef;
 
+  // Filtrar contenedores activos en ejecución
   $: runningContainers = containers.filter(c => (c.State || c.state) === 'running');
 
-  // Auto-select first running or first container if none selected
-  $: if (!selectedContainerId && containers.length > 0) {
-    const firstRunning = runningContainers[0] || containers[0];
+  // Seleccionar automáticamente el primer contenedor activo si no se ha seleccionado ninguno
+  $: if (!selectedContainerId && runningContainers.length > 0) {
+    const firstRunning = runningContainers[0];
     const id = firstRunning.id || firstRunning.Id;
     const name = firstRunning.name || firstRunning.Names?.[0]?.replace(/^\//, '') || id.slice(0, 12);
     selectedContainerId = id;
@@ -34,6 +44,21 @@
 
   function toggleFullscreen() {
     isFullscreen = !isFullscreen;
+    setTimeout(() => {
+      terminalRef?.fit();
+    }, 150);
+  }
+
+  function handleClear() {
+    terminalRef?.clear();
+  }
+
+  function handleReconnect() {
+    const current = selectedContainerId;
+    selectedContainerId = '';
+    setTimeout(() => {
+      selectedContainerId = current;
+    }, 100);
   }
 </script>
 
@@ -43,7 +68,7 @@
     <div class="toolbar-left">
       <div class="icon-label">
         <Terminal size={18} class="term-icon" />
-        <span class="label-text">Visor Interactivo de Logs:</span>
+        <span class="label-text">Terminal Interactiva (PTY TTY):</span>
       </div>
 
       <div class="selector-box">
@@ -53,34 +78,63 @@
           on:change={handleSelectContainer}
           class="container-select"
         >
-          {#if containers.length === 0}
-            <option value="">No hay contenedores disponibles</option>
+          {#if runningContainers.length === 0}
+            <option value="">No hay contenedores en ejecución</option>
           {:else}
-            <option value="" disabled>Selecciona un contenedor...</option>
-            {#each containers as c}
+            <option value="" disabled>Selecciona un contenedor activo...</option>
+            {#each runningContainers as c}
               {@const id = c.id || c.Id}
               {@const name = c.name || c.Names?.[0]?.replace(/^\//, '') || id.slice(0, 12)}
-              {@const state = (c.state || c.State || '').toLowerCase()}
               <option value={id}>
-                {name} ({state}) — {id.slice(0, 8)}
+                {name} — {id.slice(0, 8)}
               </option>
             {/each}
           {/if}
         </select>
       </div>
+
+      {#if selectedContainerId}
+        <span class="status-running-badge">
+          <span class="pulse-dot"></span> Online
+        </span>
+      {/if}
     </div>
 
     <div class="toolbar-right">
+      <!-- Botón Limpiar Pantalla -->
       <button 
+        type="button" 
+        class="btn-tool" 
+        on:click={handleClear}
+        title="Limpiar pantalla de la terminal"
+      >
+        <Trash2 size={15} />
+        <span>Limpiar</span>
+      </button>
+
+      <!-- Botón Reconectar -->
+      <button 
+        type="button" 
+        class="btn-tool" 
+        on:click={handleReconnect}
+        title="Reconectar sesión interactiva"
+      >
+        <RefreshCw size={15} />
+        <span>Reconectar</span>
+      </button>
+
+      <!-- Botón Pantalla Completa -->
+      <button 
+        type="button" 
         class="btn-tool" 
         on:click={toggleFullscreen}
         title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
       >
         {#if isFullscreen}
-          <Minimize2 size={16} />
+          <Minimize2 size={15} />
           <span>Restaurar</span>
         {:else}
-          <Maximize2 size={16} />
+          <Maximize2 size={15} />
           <span>Pantalla Completa</span>
         {/if}
       </button>
@@ -89,11 +143,17 @@
 
   <!-- Terminal Component -->
   <div class="terminal-content-area">
-    <TerminalLogs 
-      bind:this={terminalLogsRef}
-      containerId={selectedContainerId}
-      containerName={selectedContainerName}
-    />
+    {#if selectedContainerId}
+      <XtermTerminal 
+        bind:this={terminalRef}
+        containerId={selectedContainerId}
+      />
+    {:else}
+      <div class="empty-terminal-prompt">
+        <Terminal size={36} class="text-muted" />
+        <p>Selecciona un contenedor en ejecución para iniciar la consola interactiva.</p>
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -101,9 +161,14 @@
   .terminal-view-wrapper {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    height: calc(100vh - 160px);
+    background: #09090b;
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 12px;
+    height: 75vh;
     min-height: 520px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .terminal-view-wrapper.fullscreen {
@@ -113,37 +178,34 @@
     width: 100vw;
     height: 100vh;
     z-index: 9999;
-    background: #000000;
-    padding: 16px;
-    box-sizing: border-box;
+    border-radius: 0;
+    border: none;
   }
 
   .terminal-toolbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 10px;
-    padding: 10px 16px;
+    background: #020617;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    padding: 0.65rem 1rem;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 0.75rem;
   }
 
-  .toolbar-left {
+  .toolbar-left, .toolbar-right {
     display: flex;
     align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
+    gap: 0.65rem;
   }
 
   .icon-label {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.9rem;
+    gap: 0.45rem;
+    color: #f8fafc;
+    font-size: 0.85rem;
     font-weight: 600;
-    color: var(--text-main);
   }
 
   :global(.term-icon) {
@@ -151,105 +213,97 @@
   }
 
   .selector-box {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
-    background: var(--surface-muted);
-    border: 1px solid var(--card-border);
-    border-radius: 8px;
-    padding: 6px 12px;
   }
 
   :global(.select-icon) {
-    color: var(--text-muted);
+    position: absolute;
+    left: 0.65rem;
+    color: #64748b;
+    pointer-events: none;
   }
 
   .container-select {
-    background: transparent;
-    border: none;
+    background: #0f172a;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    color: #f8fafc;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.75rem 0.4rem 2rem;
+    border-radius: 6px;
     outline: none;
-    color: var(--secondary);
-    font-size: 0.85rem;
-    font-weight: 500;
+    font-family: inherit;
     cursor: pointer;
   }
 
-  .container-select option {
-    background: var(--card-bg);
-    color: var(--text-main);
+  .container-select:focus {
+    border-color: #38bdf8;
   }
 
-  .toolbar-right {
-    display: flex;
+  .status-running-badge {
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.35rem;
+    padding: 0.2rem 0.5rem;
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #22c55e;
+    box-shadow: 0 0 6px #22c55e;
   }
 
   .btn-tool {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
+    gap: 0.4rem;
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid rgba(148, 163, 184, 0.2);
     color: #cbd5e1;
-    font-size: 0.8rem;
-    font-weight: 500;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.775rem;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .btn-tool:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #f8fafc;
+    background: rgba(148, 163, 184, 0.2);
+    color: #ffffff;
+    border-color: rgba(148, 163, 184, 0.3);
   }
 
   .terminal-content-area {
     flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
+    position: relative;
+    background: #000000;
+    overflow: hidden;
   }
 
-  /* Mobile Responsive */
-  @media (max-width: 768px) {
-    .terminal-view-wrapper {
-      height: calc(100vh - 200px);
-      min-height: 380px;
-    }
+  .empty-terminal-prompt {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: #64748b;
+    font-size: 0.9rem;
+    padding: 2rem;
+    text-align: center;
+  }
 
-    .terminal-toolbar {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 10px;
-      padding: 10px 12px;
-    }
-
-    .toolbar-left {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 8px;
-      width: 100%;
-    }
-
-    .selector-box {
-      width: 100%;
-      box-sizing: border-box;
-    }
-
-    .container-select {
-      width: 100%;
-    }
-
-    .toolbar-right {
-      width: 100%;
-    }
-
-    .btn-tool {
-      width: 100%;
-      justify-content: center;
-      padding: 8px 12px;
-    }
+  .text-muted {
+    color: #64748b;
   }
 </style>

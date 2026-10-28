@@ -4,7 +4,8 @@ import {
   pruneContainers,
   pruneImages,
   pruneVolumesSafe,
-  runSystemMaintenance
+  runSystemMaintenance,
+  getDockerDiskUsage
 } from '../services/system.service.js';
 
 const router = Router();
@@ -27,6 +28,26 @@ router.get('/metrics', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Error al consultar las métricas del sistema',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/system/df
+ * Diagnóstico de espacio ocupado por Docker (contenedores, imágenes, volúmenes, build cache).
+ */
+router.get('/df', async (req, res) => {
+  try {
+    const usage = await getDockerDiskUsage();
+    res.json({
+      success: true,
+      data: usage
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Error al consultar espacio de Docker',
       details: error.message
     });
   }

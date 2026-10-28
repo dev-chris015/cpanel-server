@@ -7,6 +7,7 @@
     Database,
     Cpu,
     Globe,
+    Wrench,
     X
   } from 'lucide-svelte';
 
@@ -82,6 +83,12 @@
         <a href="#databases" on:click|preventDefault={() => handleNav('databases')}>
           <Database size={18} />
           <span>MariaDB Telemetry</span>
+        </a>
+      </li>
+      <li class:active={activeTab === 'maintenance'}>
+        <a href="#maintenance" on:click|preventDefault={() => handleNav('maintenance')}>
+          <Wrench size={18} />
+          <span>Mantenimiento</span>
         </a>
       </li>
     </ul>

@@ -314,6 +314,53 @@ export const pruneVolumesSafe = async () => {
 };
 
 /**
+ * Obtiene el diagnóstico de uso de disco en Docker (docker system df).
+ */
+export const getDockerDiskUsage = async () => {
+  try {
+    const dfData = await docker.df();
+    // dfData contiene: LayersSize, Images, Containers, Volumes, BuildCache
+    const images = dfData.Images || [];
+    const containers = dfData.Containers || [];
+    const volumes = dfData.Volumes || [];
+    const buildCache = dfData.BuildCache || [];
+
+    const calculateSize = (items, sizeField = 'Size') => 
+      items.reduce((acc, item) => acc + (Number(item[sizeField]) || 0), 0);
+
+    const imagesTotalSize = calculateSize(images);
+    const containersTotalSize = calculateSize(containers, 'SizeRw');
+    const volumesTotalSize = calculateSize(volumes, 'UsageData.Size' in (volumes[0] || {}) ? 'UsageData' : 'Size');
+    const buildCacheTotalSize = calculateSize(buildCache);
+
+    // Calcular imágenes huérfanas/dangling
+    const danglingImages = images.filter(img => img.RepoTags?.includes('<none>:<none>') || img.Dangling);
+
+    return {
+      success: true,
+      raw: {
+        imagesCount: images.length,
+        danglingImagesCount: danglingImages.length,
+        containersCount: containers.length,
+        volumesCount: volumes.length
+      },
+      layersSizeBytes: dfData.LayersSize || 0,
+      imagesSizeBytes: imagesTotalSize,
+      containersSizeBytes: containersTotalSize,
+      volumesSizeBytes: volumesTotalSize,
+      buildCacheSizeBytes: buildCacheTotalSize,
+      totalSizeBytes: (dfData.LayersSize || imagesTotalSize) + containersTotalSize + volumesTotalSize + buildCacheTotalSize
+    };
+  } catch (error) {
+    console.error('Error al obtener docker df:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+/**
  * Tarea integral de mantenimiento del sistema:
  * Ejecuta prune de contenedores, imágenes y volúmenes protegidos.
  */
@@ -367,5 +414,6 @@ export default {
   pruneContainers,
   pruneImages,
   pruneVolumesSafe,
-  runSystemMaintenance
+  runSystemMaintenance,
+  getDockerDiskUsage
 };

@@ -11,6 +11,7 @@
   import TerminalView from './views/TerminalView.svelte';
   import DatabasesView from './views/DatabasesView.svelte';
   import ProxyView from './views/ProxyView.svelte';
+  import MaintenanceView from './views/MaintenanceView.svelte';
 
   // Authentication State
   let isAuthenticated = false;
@@ -43,7 +44,8 @@
     containers: { title: 'Gestión de Contenedores', subtitle: 'Monitoreo de métricas en caliente, ciclo de vida e inspección técnica.' },
     proxy: { title: 'Nginx Virtual Hosts', subtitle: 'Gestión declarativa de dominios, proxy inverso y certificados SSL con verificación sintáctica.' },
     terminal: { title: 'Terminal de Logs', subtitle: 'Transmisión de registros en tiempo real en consola interactiva.' },
-    databases: { title: 'MariaDB Telemetry', subtitle: 'Monitoreo de conexiones, hilos y almacenamiento de bases de datos WordPress.' }
+    databases: { title: 'MariaDB Telemetry', subtitle: 'Monitoreo de conexiones, hilos y almacenamiento de bases de datos WordPress.' },
+    maintenance: { title: 'Mantenimiento del Sistema', subtitle: 'Diagnóstico de almacenamiento Docker, limpieza de imágenes y protección de volúmenes.' }
   }[activeTab] || { title: 'cPanel', subtitle: 'Panel de administración' };
 
   async function checkAuth() {
@@ -287,6 +289,8 @@
         <TerminalView {containers} />
       {:else if activeTab === 'databases'}
         <DatabasesView />
+      {:else if activeTab === 'maintenance'}
+        <MaintenanceView />
       {/if}
     </main>
   </div>

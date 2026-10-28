@@ -9,54 +9,342 @@
     Clock, 
     CheckCircle, 
     AlertTriangle,
-    Zap
+    Zap,
+    Download,
+    Trash2,
+    Plus,
+    Users,
+    Shield,
+    ShieldAlert,
+    ShieldCheck,
+    FileText,
+    Key,
+    Lock,
+    X,
+    FolderArchive
   } from 'lucide-svelte';
   import { api } from '../lib/api.js';
 
+  // Navegación de pestañas internas: 'schemas' | 'users'
+  let activeSubTab = 'schemas';
+
+  // Estados de datos
   let telemetry = null;
-  let loading = true;
-  let error = null;
+  let schemas = [];
+  let backups = [];
+  let users = [];
+
+  // Estados de carga y feedback
+  let loadingTelemetry = true;
+  let loadingSchemas = false;
+  let loadingBackups = false;
+  let loadingUsers = false;
+  let actionLoading = false;
+
+  let backupInProgress = {}; // { [schemaName]: boolean }
+  let noticeMessage = null; // { type: 'success' | 'error', text: '' }
+
+  // Formulario: Crear Esquema
+  let showCreateSchemaModal = false;
+  let newSchemaName = '';
+  let newSchemaCharset = 'utf8mb4';
+  let newSchemaCollation = 'utf8mb4_unicode_ci';
+
+  // Formulario: Crear Usuario
+  let showCreateUserModal = false;
+  let newUsername = '';
+  let newUserPassword = '';
+  let newUserHost = '%';
+  let newUserDatabase = '';
+  let newUserPrivileges = ['ALL PRIVILEGES'];
+
   let intervalId = null;
 
+  function showNotice(text, type = 'success', duration = 4500) {
+    noticeMessage = { type, text };
+    setTimeout(() => {
+      if (noticeMessage?.text === text) {
+        noticeMessage = null;
+      }
+    }, duration);
+  }
+
+  // 1. Telemetría de MariaDB
   async function fetchTelemetry() {
     try {
       const res = await api.get('/databases/status');
       if (res && res.success) {
         telemetry = res.data;
-        error = null;
-      } else {
-        error = res.error || 'Error al obtener telemetría de MariaDB';
       }
     } catch (err) {
-      error = err.message || 'No se pudo conectar al endpoint de bases de datos';
+      console.warn('Error al consultar telemetría MariaDB:', err.message);
     } finally {
-      loading = false;
+      loadingTelemetry = false;
     }
   }
 
-  function formatUptime(seconds) {
-    if (!seconds && seconds !== 0) return '--';
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const parts = [];
-    if (days > 0) parts.push(`${days}d`);
-    if (hours > 0 || days > 0) parts.push(`${hours}h`);
-    parts.push(`${mins}m`);
-    return parts.join(' ');
+  // 2. Esquemas (Bases de datos)
+  async function fetchSchemas() {
+    loadingSchemas = true;
+    try {
+      const res = await api.get('/databases/schemas');
+      if (res && res.success) {
+        schemas = res.data || [];
+      }
+    } catch (err) {
+      showNotice(`Error al listar bases de datos: ${err.message}`, 'error');
+    } finally {
+      loadingSchemas = false;
+    }
   }
 
-  // Identificar si una base de datos es wp_site
-  function isWpSite(dbName) {
-    return /^(wp_site|wp_db|wordpress)/i.test(dbName);
+  // 3. Copias de Seguridad (Backups)
+  async function fetchBackups() {
+    loadingBackups = true;
+    try {
+      const res = await api.get('/databases/backups');
+      if (res && res.success) {
+        backups = res.data || [];
+      }
+    } catch (err) {
+      showNotice(`Error al listar backups: ${err.message}`, 'error');
+    } finally {
+      loadingBackups = false;
+    }
   }
 
-  $: wpDatabases = (telemetry?.databases || []).filter(d => isWpSite(d.database));
-  $: otherDatabases = (telemetry?.databases || []).filter(d => !isWpSite(d.database));
+  // 4. Usuarios de MariaDB
+  async function fetchUsers() {
+    loadingUsers = true;
+    try {
+      const res = await api.get('/databases/users');
+      if (res && res.success) {
+        users = res.data || [];
+      }
+    } catch (err) {
+      showNotice(`Error al listar usuarios: ${err.message}`, 'error');
+    } finally {
+      loadingUsers = false;
+    }
+  }
+
+  async function refreshAll() {
+    await Promise.all([
+      fetchTelemetry(),
+      fetchSchemas(),
+      fetchBackups(),
+      fetchUsers()
+    ]);
+  }
+
+  // Acciones sobre Esquemas
+  async function handleCreateSchema() {
+    const cleanName = newSchemaName.trim().toLowerCase();
+    if (!cleanName) {
+      alert('Ingresa un nombre para la base de datos.');
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(cleanName)) {
+      alert('El nombre solo puede contener letras, números y guiones bajos (_).');
+      return;
+    }
+
+    actionLoading = true;
+    try {
+      const res = await api.post('/databases/schemas', {
+        name: cleanName,
+        charset: newSchemaCharset,
+        collation: newSchemaCollation
+      });
+
+      if (res && res.success) {
+        showNotice(`Base de datos "${cleanName}" creada exitosamente.`, 'success');
+        newSchemaName = '';
+        showCreateSchemaModal = false;
+        await fetchSchemas();
+        await fetchTelemetry();
+      } else {
+        showNotice(res?.error || 'No se pudo crear la base de datos.', 'error');
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.error || err.message;
+      showNotice(`Error al crear base de datos: ${msg}`, 'error');
+    } finally {
+      actionLoading = false;
+    }
+  }
+
+  async function handleTriggerBackup(schemaName) {
+    if (backupInProgress[schemaName]) return;
+
+    backupInProgress[schemaName] = true;
+    showNotice(`Generando copia de seguridad para "${schemaName}"...`, 'success', 3000);
+
+    try {
+      const res = await api.post('/databases/backups', {
+        database: schemaName
+      });
+
+      if (res && res.success) {
+        showNotice(`¡Backup de "${schemaName}" creado exitosamente!`, 'success');
+        await fetchBackups();
+      } else {
+        showNotice(res?.error || `Error al respaldar "${schemaName}".`, 'error');
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.error || err.message;
+      showNotice(`Fallo en el respaldo: ${msg}`, 'error');
+    } finally {
+      backupInProgress[schemaName] = false;
+    }
+  }
+
+  // Acciones sobre Backups
+  function handleDownloadBackup(filename) {
+    const token = api.getToken();
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const downloadUrl = `/api/databases/backups/${encodeURIComponent(filename)}/download`;
+
+    // Descarga autenticada mediante Blob
+    fetch(downloadUrl, {
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        return res.blob();
+      })
+      .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      })
+      .catch(err => {
+        showNotice(`Error al descargar ${filename}: ${err.message}`, 'error');
+      });
+  }
+
+  async function handleDeleteBackup(filename) {
+    if (!confirm(`¿Eliminar definitivamente el archivo de respaldo "${filename}"?`)) {
+      return;
+    }
+
+    try {
+      const res = await api.delete(`/databases/backups/${encodeURIComponent(filename)}`);
+      if (res && res.success) {
+        showNotice(`Archivo "${filename}" eliminado correctamente.`, 'success');
+        await fetchBackups();
+      } else {
+        showNotice(res?.error || 'No se pudo eliminar el archivo.', 'error');
+      }
+    } catch (err) {
+      showNotice(`Error al eliminar backup: ${err.message}`, 'error');
+    }
+  }
+
+  // Acciones sobre Usuarios
+  async function handleCreateUser() {
+    const user = newUsername.trim();
+    const pass = newUserPassword.trim();
+    const host = newUserHost.trim() || '%';
+    const db = newUserDatabase || undefined;
+
+    if (!user || !pass) {
+      alert('El nombre de usuario y la contraseña son obligatorios.');
+      return;
+    }
+
+    actionLoading = true;
+    try {
+      const res = await api.post('/databases/users', {
+        username: user,
+        password: pass,
+        host,
+        database: db,
+        privileges: newUserPrivileges
+      });
+
+      if (res && res.success) {
+        showNotice(`Usuario '${user}'@'${host}' creado con permisos asignados.`, 'success');
+        newUsername = '';
+        newUserPassword = '';
+        newUserHost = '%';
+        newUserDatabase = '';
+        showCreateUserModal = false;
+        await fetchUsers();
+      } else {
+        showNotice(res?.error || 'No se pudo crear el usuario.', 'error');
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.error || err.message;
+      showNotice(`Error al crear usuario: ${msg}`, 'error');
+    } finally {
+      actionLoading = false;
+    }
+  }
+
+  async function handleDeleteUser(userItem) {
+    const username = userItem.user;
+    const host = userItem.host || '%';
+
+    if (username.toLowerCase() === 'root' || userItem.isSystemUser) {
+      alert('Operación protegida: El usuario "root" y usuarios del sistema no pueden ser eliminados.');
+      return;
+    }
+
+    if (!confirm(`¿Estás seguro de eliminar al usuario '${username}'@'${host}'? Sus privilegios serán revocados automáticamente.`)) {
+      return;
+    }
+
+    try {
+      const res = await api.delete(`/databases/users/${encodeURIComponent(username)}?host=${encodeURIComponent(host)}`);
+      if (res && res.success) {
+        showNotice(`Usuario '${username}'@'${host}' eliminado.`, 'success');
+        await fetchUsers();
+      } else {
+        showNotice(res?.error || 'No se pudo eliminar el usuario.', 'error');
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.error || err.message;
+      showNotice(`Error al eliminar usuario: ${msg}`, 'error');
+    }
+  }
+
+  function formatFileSize(bytes) {
+    if (!bytes || bytes === 0) return '0 KB';
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    return `${mb.toFixed(2)} MB`;
+  }
+
+  function formatDateTime(isoString) {
+    if (!isoString) return '--';
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleString('es-MX', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } catch (e) {
+      return isoString;
+    }
+  }
 
   onMount(() => {
-    fetchTelemetry();
-    intervalId = setInterval(fetchTelemetry, 5000);
+    refreshAll();
+    intervalId = setInterval(fetchTelemetry, 6000);
   });
 
   onDestroy(() => {
@@ -65,172 +353,535 @@
 </script>
 
 <div class="databases-view">
-  <!-- Top Status Banner -->
+  <!-- Encabezado con Switcher de Pestañas -->
   <div class="banner-card">
     <div class="banner-left">
       <div class="icon-cube">
         <Database size={24} color="#ffffff" />
       </div>
       <div>
-        <h3 class="banner-title">Telemetría de Servidor MariaDB</h3>
-        <p class="banner-desc">Monitoreo de conexiones, hilos en ejecución y pesos de bases de datos WordPress.</p>
+        <h3 class="banner-title">Módulo Gestor MariaDB</h3>
+        <p class="banner-desc">Administración de esquemas, volcados manuales en <code class="font-mono">/srv/backups</code> y control de acceso seguro.</p>
       </div>
     </div>
 
     <div class="banner-actions">
       <div class="connection-pill" class:connected={telemetry?.connected}>
         <span class="status-dot"></span>
-        <span>{telemetry?.connected ? 'Conectado a MariaDB' : 'Desconectado'}</span>
+        <span>{telemetry?.connected ? 'MariaDB Online' : 'Desconectado'}</span>
       </div>
 
-      <button class="btn-refresh" on:click={fetchTelemetry} disabled={loading} title="Actualizar datos">
-        <RefreshCw size={15} class={loading ? 'spin' : ''} />
+      <button 
+        type="button" 
+        class="btn-refresh" 
+        on:click={refreshAll} 
+        disabled={loadingSchemas || loadingBackups || loadingUsers}
+      >
+        <RefreshCw size={15} class={(loadingSchemas || loadingBackups || loadingUsers) ? 'spin' : ''} />
         <span>Actualizar</span>
       </button>
     </div>
   </div>
 
-  {#if error}
-    <div class="alert-box">
-      <AlertTriangle size={18} />
-      <span>{error}</span>
+  <!-- Barra de Notificaciones Globales -->
+  {#if noticeMessage}
+    <div class="notice-card notice-{noticeMessage.type}">
+      <div class="notice-icon">
+        {#if noticeMessage.type === 'success'}
+          <CheckCircle size={18} />
+        {:else}
+          <AlertTriangle size={18} />
+        {/if}
+      </div>
+      <div class="notice-text">{noticeMessage.text}</div>
+      <button type="button" class="btn-close-notice" on:click={() => noticeMessage = null}>
+        <X size={15} />
+      </button>
     </div>
   {/if}
 
-  <!-- Telemetry Metrics Grid -->
-  <div class="metrics-grid">
-    <!-- Hilos y Conexiones Activas -->
-    <div class="metric-card">
-      <div class="metric-head">
-        <span class="metric-label">
-          <Activity size={16} class="icon-blue" /> Conexiones Activas
-        </span>
-        <span class="metric-sub font-mono">Max Used: {telemetry?.connections?.maxUsed ?? '--'}</span>
-      </div>
-      <div class="metric-main">
-        <span class="metric-number font-mono">{telemetry?.connections?.active ?? 0}</span>
-        <span class="metric-unit">threads conectados</span>
-      </div>
-      <div class="metric-footer text-muted">
-        <span>Hilos en ejecución: <strong>{telemetry?.connections?.running ?? 0}</strong></span>
-      </div>
-    </div>
+  <!-- Pestañas de Navegación del Módulo -->
+  <div class="tabs-nav-bar">
+    <button 
+      type="button"
+      class="tab-btn" 
+      class:active={activeSubTab === 'schemas'} 
+      on:click={() => activeSubTab = 'schemas'}
+    >
+      <Database size={16} />
+      <span>Bases de Datos y Backups</span>
+      <span class="badge-count">{schemas.length}</span>
+    </button>
 
-    <!-- Uptime del Servicio -->
-    <div class="metric-card">
-      <div class="metric-head">
-        <span class="metric-label">
-          <Clock size={16} class="icon-amber" /> Uptime MariaDB
-        </span>
-      </div>
-      <div class="metric-main">
-        <span class="metric-number font-mono">{formatUptime(telemetry?.uptimeSeconds)}</span>
-      </div>
-      <div class="metric-footer text-muted">
-        <span>Total de consultas: {telemetry?.totalQueries ? telemetry.totalQueries.toLocaleString() : '--'}</span>
-      </div>
-    </div>
-
-    <!-- Tamaño Total Almacenado -->
-    <div class="metric-card">
-      <div class="metric-head">
-        <span class="metric-label">
-          <HardDrive size={16} class="icon-purple" /> Peso Total Almacenado
-        </span>
-      </div>
-      <div class="metric-main">
-        <span class="metric-number font-mono">{telemetry?.totalSizeMb ?? 0}</span>
-        <span class="metric-unit">MB</span>
-      </div>
-      <div class="metric-footer text-muted">
-        <span>{telemetry?.databases?.length ?? 0} bases de datos registradas</span>
-      </div>
-    </div>
+    <button 
+      type="button"
+      class="tab-btn" 
+      class:active={activeSubTab === 'users'} 
+      on:click={() => activeSubTab = 'users'}
+    >
+      <Users size={16} />
+      <span>Gestión de Usuarios MariaDB</span>
+      <span class="badge-count">{users.length}</span>
+    </button>
   </div>
 
-  <!-- WordPress Sites Database Cards Section -->
-  <div class="section-container">
-    <div class="section-header">
-      <div class="sec-title-group">
-        <Zap size={18} class="icon-brand" />
-        <h4>Bases de Datos de Sitios WordPress</h4>
+  <!-- ========================================================================= -->
+  <!-- PESTAÑA 1: BASES DE DATOS Y BACKUPS -->
+  <!-- ========================================================================= -->
+  {#if activeSubTab === 'schemas'}
+    <div class="tab-content-area">
+      <!-- 1.1 Tabla de Esquemas -->
+      <div class="card">
+        <div class="card-header-row">
+          <div class="header-title-block">
+            <Layers size={18} class="text-cyan" />
+            <h4>Esquemas y Bases de Datos</h4>
+          </div>
+
+          <button 
+            type="button" 
+            class="btn-primary" 
+            on:click={() => showCreateSchemaModal = true}
+          >
+            <Plus size={15} />
+            <span>Crear Base de Datos</span>
+          </button>
+        </div>
+
+        {#if loadingSchemas}
+          <div class="state-loading">
+            <RefreshCw size={22} class="spin text-cyan" />
+            <span>Consultando esquemas en information_schema...</span>
+          </div>
+        {:else if schemas.length === 0}
+          <div class="state-empty">No se encontraron bases de datos configuradas.</div>
+        {:else}
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Nombre de la Base de Datos</th>
+                  <th>Tamaño</th>
+                  <th>Tablas</th>
+                  <th>Charset / Collation</th>
+                  <th class="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each schemas as s}
+                  <tr>
+                    <td class="col-name">
+                      <div class="schema-name-cell">
+                        <Database size={15} class="text-cyan" />
+                        <span class="font-mono schema-title">{s.name}</span>
+                        {#if s.isSystem}
+                          <span class="system-badge">Sistema</span>
+                        {/if}
+                      </div>
+                    </td>
+
+                    <td class="col-size font-mono">
+                      <span class="size-pill">{s.sizeMb} MB</span>
+                    </td>
+
+                    <td class="col-tables font-mono">
+                      {s.tablesCount} tablas
+                    </td>
+
+                    <td class="col-charset font-mono text-muted text-xs">
+                      {s.charset || 'utf8mb4'} / {s.collation || 'utf8mb4_unicode_ci'}
+                    </td>
+
+                    <td class="col-actions text-right">
+                      <button 
+                        type="button" 
+                        class="btn-backup" 
+                        on:click={() => handleTriggerBackup(s.name)}
+                        disabled={backupInProgress[s.name]}
+                        title="Generar volcado .sql en /srv/backups"
+                      >
+                        {#if backupInProgress[s.name]}
+                          <RefreshCw size={13} class="spin" />
+                          <span>Respaldando...</span>
+                        {:else}
+                          <FolderArchive size={13} />
+                          <span>Hacer Backup</span>
+                        {/if}
+                      </button>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
       </div>
-      <span class="count-pill">{wpDatabases.length} Sitios Detectados</span>
+
+      <!-- 1.2 Panel de Copias de Seguridad Disponibles -->
+      <div class="card">
+        <div class="card-header-row">
+          <div class="header-title-block">
+            <FolderArchive size={18} class="text-green" />
+            <h4>Copias de Seguridad Disponibles en <code class="font-mono">/srv/backups/</code></h4>
+          </div>
+          <span class="count-pill">{backups.length} Archivo{backups.length === 1 ? '' : 's'} .SQL</span>
+        </div>
+
+        {#if loadingBackups}
+          <div class="state-loading">
+            <RefreshCw size={22} class="spin text-green" />
+            <span>Escaneando directorio de respaldos...</span>
+          </div>
+        {:else if backups.length === 0}
+          <div class="state-empty">
+            <FileText size={24} class="text-muted" />
+            <span>No hay archivos .sql en <code class="font-mono">/srv/backups</code>. Realiza un backup para comenzar.</span>
+          </div>
+        {:else}
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Archivo de Volcado</th>
+                  <th>Base de Datos</th>
+                  <th>Tamaño Formateado</th>
+                  <th>Fecha de Creación</th>
+                  <th class="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each backups as b}
+                  <tr>
+                    <td class="col-filename">
+                      <div class="file-cell">
+                        <FileText size={15} class="text-green" />
+                        <span class="font-mono file-name" title={b.fileName}>{b.fileName}</span>
+                      </div>
+                    </td>
+
+                    <td class="col-db font-mono">
+                      <span class="db-tag">{b.dbName || '--'}</span>
+                    </td>
+
+                    <td class="col-size font-mono">
+                      <strong>{formatFileSize(b.sizeBytes)}</strong>
+                    </td>
+
+                    <td class="col-date font-mono text-muted text-xs">
+                      {formatDateTime(b.createdAt)}
+                    </td>
+
+                    <td class="col-actions text-right">
+                      <div class="action-btn-group">
+                        <button 
+                          type="button" 
+                          class="btn-action-download" 
+                          on:click={() => handleDownloadBackup(b.fileName)}
+                          title="Descargar volcado SQL en el navegador"
+                        >
+                          <Download size={13} />
+                          <span>Descargar</span>
+                        </button>
+
+                        <button 
+                          type="button" 
+                          class="btn-action-delete" 
+                          on:click={() => handleDeleteBackup(b.fileName)}
+                          title="Eliminar volcado del almacenamiento"
+                        >
+                          <Trash2 size={13} />
+                          <span>Eliminar</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </div>
     </div>
+  {/if}
 
-    {#if wpDatabases.length === 0}
-      <div class="empty-dbs">
-        <p>No se encontraron bases de datos con el prefijo <code>wp_site_*</code> actualmente.</p>
-      </div>
-    {:else}
-      <div class="wp-grid">
-        {#each wpDatabases as db}
-          <div class="wp-card">
-            <div class="wp-card-head">
-              <div class="wp-badge">WP</div>
-              <span class="wp-dbname font-mono">{db.database}</span>
-            </div>
+  <!-- ========================================================================= -->
+  <!-- PESTAÑA 2: GESTIÓN DE USUARIOS MARIADB -->
+  <!-- ========================================================================= -->
+  {#if activeSubTab === 'users'}
+    <div class="tab-content-area">
+      <!-- 2.1 Formulario de Alta de Usuario -->
+      <div class="card">
+        <div class="card-header-row">
+          <div class="header-title-block">
+            <Users size={18} class="text-cyan" />
+            <h4>Crear Nuevo Usuario MariaDB</h4>
+          </div>
+          <span class="shield-badge">
+            <ShieldCheck size={14} class="text-green" />
+            GRANT ALL PRIVILEGES
+          </span>
+        </div>
 
-            <div class="wp-card-body">
-              <span class="wp-label">Peso exacto en disco</span>
-              <div class="wp-size-row">
-                <span class="wp-size-val font-mono">{db.sizeMb.toFixed(2)}</span>
-                <span class="wp-size-unit">MB</span>
+        <form on:submit|preventDefault={handleCreateUser} class="user-form">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="new-db-user" class="form-label">
+                Nombre de Usuario <span class="required">*</span>
+              </label>
+              <div class="input-box">
+                <Users size={15} class="icon-input" />
+                <input 
+                  id="new-db-user"
+                  type="text" 
+                  bind:value={newUsername} 
+                  placeholder="ej. wp_user" 
+                  class="form-control font-mono"
+                  required
+                />
               </div>
             </div>
 
-            <div class="wp-progress-bar">
-              <div 
-                class="wp-progress-fill" 
-                style="width: {Math.min(100, Math.max(5, (db.sizeMb / (telemetry?.totalSizeMb || 1)) * 100))}%"
-              ></div>
+            <div class="form-group">
+              <label for="new-db-pass" class="form-label">
+                Contraseña <span class="required">*</span>
+              </label>
+              <div class="input-box">
+                <Key size={15} class="icon-input" />
+                <input 
+                  id="new-db-pass"
+                  type="password" 
+                  bind:value={newUserPassword} 
+                  placeholder="••••••••••••" 
+                  class="form-control font-mono"
+                  required
+                />
+              </div>
             </div>
-            <div class="wp-card-footer">
-              <span class="text-muted font-mono">{((db.sizeMb / (telemetry?.totalSizeMb || 1)) * 100).toFixed(1)}% del total</span>
+
+            <div class="form-group">
+              <label for="new-db-host" class="form-label">
+                Host Permitido <span class="required">*</span>
+              </label>
+              <div class="input-box">
+                <HardDrive size={15} class="icon-input" />
+                <input 
+                  id="new-db-host"
+                  type="text" 
+                  bind:value={newUserHost} 
+                  placeholder="% (cualquiera) o 172.%.%.%" 
+                  class="form-control font-mono"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="new-db-schema" class="form-label">
+                Conceder Permisos sobre Esquema
+              </label>
+              <div class="input-box">
+                <Database size={15} class="icon-input" />
+                <select 
+                  id="new-db-schema"
+                  bind:value={newUserDatabase} 
+                  class="form-control form-select"
+                >
+                  <option value="">Todas las bases de datos (*.*)</option>
+                  {#each schemas as s}
+                    <option value={s.name}>{s.name} ({s.sizeMb} MB)</option>
+                  {/each}
+                </select>
+              </div>
             </div>
           </div>
-        {/each}
-      </div>
-    {/if}
-  </div>
 
-  <!-- Other Databases (information_schema, mysql, etc.) -->
-  {#if otherDatabases.length > 0}
-    <div class="section-container">
-      <div class="section-header">
-        <div class="sec-title-group">
-          <Layers size={18} class="icon-blue" />
-          <h4>Otras Bases de Datos del Sistema</h4>
+          <div class="form-bottom-row">
+            <div class="grant-preview text-xs text-muted">
+              Se ejecutará: <code class="font-mono text-cyan">GRANT ALL PRIVILEGES ON `{newUserDatabase || '*'}`.* TO '{newUsername || 'user'}'@'{newUserHost || '%'}';</code>
+            </div>
+
+            <button 
+              type="submit" 
+              class="btn-primary" 
+              disabled={actionLoading || !newUsername || !newUserPassword}
+            >
+              {#if actionLoading}
+                <RefreshCw size={14} class="spin" />
+                <span>Creando usuario...</span>
+              {:else}
+                <Plus size={14} />
+                <span>Crear Usuario y Conceder Permisos</span>
+              {/if}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 2.2 Lista de Usuarios MariaDB -->
+      <div class="card">
+        <div class="card-header-row">
+          <div class="header-title-block">
+            <Shield size={18} class="text-cyan" />
+            <h4>Cuentas de Usuario en <code class="font-mono">mysql.user</code></h4>
+          </div>
+          <span class="count-pill">{users.length} Usuarios Registrados</span>
         </div>
-        <span class="count-pill">{otherDatabases.length} Adicionales</span>
-      </div>
 
-      <div class="other-dbs-table-wrap">
-        <table class="dbs-table">
-          <thead>
-            <tr>
-              <th>Base de Datos</th>
-              <th>Tamaño (MB)</th>
-              <th>Proporción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each otherDatabases as db}
-              <tr>
-                <td class="font-mono">{db.database}</td>
-                <td class="font-mono font-bold">{db.sizeMb.toFixed(2)} MB</td>
-                <td>
-                  <div class="table-progress">
-                    <div 
-                      class="table-fill" 
-                      style="width: {Math.min(100, (db.sizeMb / (telemetry?.totalSizeMb || 1)) * 100)}%"
-                    ></div>
-                  </div>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+        {#if loadingUsers}
+          <div class="state-loading">
+            <RefreshCw size={22} class="spin text-cyan" />
+            <span>Consultando tabla de usuarios de MariaDB...</span>
+          </div>
+        {:else if users.length === 0}
+          <div class="state-empty">No se encontraron usuarios en la base de datos.</div>
+        {:else}
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Usuario @ Host</th>
+                  <th>Plugin de Autenticación</th>
+                  <th>Tipo de Cuenta</th>
+                  <th class="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each users as u}
+                  {@const isRoot = u.user.toLowerCase() === 'root'}
+                  {@const isSys = u.isSystemUser}
+                  <tr>
+                    <td class="col-user">
+                      <div class="user-cell">
+                        {#if isRoot}
+                          <ShieldAlert size={16} class="text-amber" />
+                        {:else}
+                          <Users size={16} class="text-cyan" />
+                        {/if}
+                        <span class="font-mono user-account-name">
+                          <strong>{u.user}</strong>@{u.host}
+                        </span>
+                      </div>
+                    </td>
+
+                    <td class="col-plugin font-mono text-muted text-xs">
+                      {u.plugin || 'mysql_native_password'}
+                    </td>
+
+                    <td class="col-type">
+                      {#if isRoot}
+                        <span class="badge-role role-root">Superadministrador (root)</span>
+                      {:else if isSys}
+                        <span class="badge-role role-system">Sistema</span>
+                      {:else}
+                        <span class="badge-role role-standard">Estándar</span>
+                      {/if}
+                    </td>
+
+                    <td class="col-actions text-right">
+                      {#if isRoot || isSys}
+                        <span class="protected-pill" title="Protección de integridad: No se permite eliminar al superusuario">
+                          <Lock size={12} />
+                          <span>Protegido</span>
+                        </span>
+                      {:else}
+                        <button 
+                          type="button" 
+                          class="btn-action-delete" 
+                          on:click={() => handleDeleteUser(u)}
+                          title="Eliminar usuario y revocar privilegios"
+                        >
+                          <Trash2 size={13} />
+                          <span>Eliminar</span>
+                        </button>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
+  <!-- Modal: Crear Esquema -->
+  {#if showCreateSchemaModal}
+    <div 
+      class="modal-backdrop" 
+      on:click|self={() => showCreateSchemaModal = false}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title">
+            <Database size={18} class="text-cyan" />
+            <h4>Nueva Base de Datos</h4>
+          </div>
+          <button type="button" class="btn-close-modal" on:click={() => showCreateSchemaModal = false}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <form on:submit|preventDefault={handleCreateSchema} class="modal-form">
+          <div class="form-group">
+            <label for="create-db-name" class="form-label">
+              Nombre de la Base de Datos <span class="required">*</span>
+            </label>
+            <div class="input-box">
+              <Database size={15} class="icon-input" />
+              <input 
+                id="create-db-name"
+                type="text" 
+                bind:value={newSchemaName} 
+                placeholder="ej. wp_tienda_online" 
+                class="form-control font-mono"
+                required
+              />
+            </div>
+            <span class="text-xs text-muted">Solo caracteres alfanuméricos y guiones bajos (_).</span>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="create-db-charset" class="form-label">Charset</label>
+              <input 
+                id="create-db-charset"
+                type="text" 
+                bind:value={newSchemaCharset} 
+                class="form-control font-mono"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="create-db-collation" class="form-label">Collation</label>
+              <input 
+                id="create-db-collation"
+                type="text" 
+                bind:value={newSchemaCollation} 
+                class="form-control font-mono"
+              />
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button 
+              type="button" 
+              class="btn-cancel" 
+              on:click={() => showCreateSchemaModal = false}
+            >
+              Cancelar
+            </button>
+            <button 
+              type="submit" 
+              class="btn-primary" 
+              disabled={actionLoading || !newSchemaName.trim()}
+            >
+              {actionLoading ? 'Creando...' : 'Crear Esquema'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   {/if}
@@ -240,410 +891,628 @@
   .databases-view {
     display: flex;
     flex-direction: column;
-    gap: 1.75rem;
+    gap: 1.5rem;
   }
 
+  /* Banner Superior */
   .banner-card {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 16px;
-    padding: 1.5rem;
+    background: #0f172a;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 14px;
+    padding: 1.25rem 1.5rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
     gap: 1rem;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.4);
   }
 
   .banner-left {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 1rem;
   }
 
   .icon-cube {
-    background: #0284c7;
     width: 44px;
     height: 44px;
-    border-radius: 12px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #0284c7, #2563eb);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+    flex-shrink: 0;
   }
 
   .banner-title {
-    margin: 0 0 4px 0;
+    margin: 0;
     font-size: 1.15rem;
-    color: var(--text-main);
+    font-weight: 700;
+    color: #f8fafc;
   }
 
   .banner-desc {
-    margin: 0;
-    font-size: 0.85rem;
-    color: var(--text-muted);
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: #94a3b8;
   }
 
   .banner-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 0.75rem;
   }
 
   .connection-pill {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 7px;
-    padding: 6px 14px;
+    gap: 0.45rem;
+    padding: 0.35rem 0.75rem;
     border-radius: 9999px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    background: rgba(239, 68, 68, 0.15);
-    color: #f87171;
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.2);
   }
 
   .connection-pill.connected {
-    background: rgba(16, 185, 129, 0.15);
-    color: #34d399;
-    border-color: rgba(16, 185, 129, 0.3);
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+    border-color: rgba(34, 197, 94, 0.3);
   }
 
   .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 6.5px;
+    height: 6.5px;
     border-radius: 50%;
-    background: currentColor;
+    background-color: #ef4444;
+  }
+
+  .connection-pill.connected .status-dot {
+    background-color: #22c55e;
+    box-shadow: 0 0 6px #22c55e;
   }
 
   .btn-refresh {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 7px 14px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+    gap: 0.45rem;
+    background: transparent;
+    border: 1px solid rgba(148, 163, 184, 0.2);
     color: #cbd5e1;
-    font-size: 0.85rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.775rem;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
   }
 
-  .btn-refresh:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #f8fafc;
+  .btn-refresh:hover:not(:disabled) {
+    background: rgba(148, 163, 184, 0.1);
+    color: #ffffff;
   }
 
-  .alert-box {
+  /* Notificaciones */
+  .notice-card {
     display: flex;
     align-items: center;
-    gap: 10px;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    gap: 0.75rem;
     border-radius: 10px;
-    padding: 12px 16px;
+    padding: 0.85rem 1.25rem;
+  }
+
+  .notice-success {
+    background: rgba(34, 197, 94, 0.12);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #4ade80;
+  }
+
+  .notice-error {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
     color: #f87171;
-    font-size: 0.9rem;
   }
 
-  .metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 1.25rem;
+  .notice-text {
+    flex: 1;
+    font-size: 0.85rem;
+    font-weight: 500;
   }
 
-  .metric-card {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 14px;
-    padding: 1.25rem;
+  .btn-close-notice {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+  }
+
+  /* Tabs Navigation Bar */
+  .tabs-nav-bar {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    gap: 0.5rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+    padding-bottom: 0.5rem;
   }
 
-  .metric-head {
-    display: flex;
-    justify-content: space-between;
+  .tab-btn {
+    display: inline-flex;
     align-items: center;
-  }
-
-  .metric-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    gap: 0.5rem;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #94a3b8;
+    padding: 0.6rem 1.15rem;
+    border-radius: 8px;
     font-size: 0.85rem;
     font-weight: 600;
-    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
   }
 
-  .metric-sub {
-    font-size: 0.75rem;
-    color: var(--text-muted);
+  .tab-btn:hover {
+    color: #f8fafc;
+    background: rgba(148, 163, 184, 0.08);
   }
 
-  :global(.icon-blue) { color: #38bdf8; }
-  :global(.icon-amber) { color: #f59e0b; }
-  :global(.icon-purple) { color: #a855f7; }
-  :global(.icon-brand) { color: #0284c7; }
+  .tab-btn.active {
+    background: #0f172a;
+    border-color: rgba(56, 189, 248, 0.3);
+    color: #38bdf8;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
 
-  .metric-main {
+  .badge-count {
+    background: rgba(148, 163, 184, 0.15);
+    padding: 0.15rem 0.45rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+  }
+
+  .tab-content-area {
     display: flex;
-    align-items: baseline;
-    gap: 6px;
+    flex-direction: column;
+    gap: 1.5rem;
   }
 
-  .metric-number {
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--text-main);
-  }
-
-  .metric-unit {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-  }
-
-  .metric-footer {
-    font-size: 0.78rem;
-    border-top: 1px solid var(--card-border);
-    padding-top: 8px;
-  }
-
-  /* Section Styles */
-  .section-container {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 16px;
+  /* Card Container */
+  .card {
+    background: #0f172a;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 14px;
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
+    box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.4);
   }
 
-  .section-header {
+  .card-header-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    padding-bottom: 0.85rem;
   }
 
-  .sec-title-group {
+  .header-title-block {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.55rem;
   }
 
-  .sec-title-group h4 {
+  .header-title-block h4 {
     margin: 0;
     font-size: 1.05rem;
-    color: var(--text-main);
+    font-weight: 700;
+    color: #f8fafc;
   }
 
   .count-pill {
-    background: rgba(56, 189, 248, 0.15);
-    color: #38bdf8;
-    padding: 3px 10px;
-    border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 600;
+    padding: 0.25rem 0.65rem;
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border-radius: 9999px;
   }
 
-  .wp-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.25rem;
-  }
-
-  .wp-card {
-    background: var(--surface-muted);
-    border: 1px solid var(--card-border);
-    border-radius: 12px;
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    transition: transform 0.2s, border-color 0.2s;
-  }
-
-  .wp-card:hover {
-    transform: translateY(-2px);
-    border-color: #38bdf8;
-  }
-
-  .wp-card-head {
-    display: flex;
+  .shield-badge {
+    display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #4ade80;
+    background: rgba(34, 197, 94, 0.1);
+    padding: 0.25rem 0.65rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(34, 197, 94, 0.25);
   }
 
-  .wp-badge {
-    background: #0073aa;
-    color: white;
-    font-size: 0.72rem;
-    font-weight: 800;
-    padding: 3px 7px;
+  /* Botones Generales */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: #0284c7;
+    border: none;
+    color: #ffffff;
+    padding: 0.55rem 1rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: #0369a1;
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-backup {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #34d399;
+    padding: 0.4rem 0.85rem;
     border-radius: 6px;
+    font-size: 0.775rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
   }
 
-  .wp-dbname {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--text-main);
+  .btn-backup:hover:not(:disabled) {
+    background: rgba(16, 185, 129, 0.25);
+    color: #ffffff;
   }
 
-  .wp-card-body {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-top: 4px;
+  .btn-backup:disabled {
+    opacity: 0.6;
+    cursor: wait;
   }
 
-  .wp-label {
-    font-size: 0.78rem;
-    color: var(--text-muted);
+  .action-btn-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
-  .wp-size-row {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-  }
-
-  .wp-size-val {
-    font-size: 1.75rem;
-    font-weight: 700;
+  .btn-action-download {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.25);
     color: #38bdf8;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
   }
 
-  .wp-size-unit {
-    font-size: 0.85rem;
-    color: var(--text-muted);
+  .btn-action-download:hover {
+    background: rgba(56, 189, 248, 0.25);
+    color: #ffffff;
+  }
+
+  .btn-action-delete {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #f87171;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-action-delete:hover {
+    background: rgba(239, 68, 68, 0.25);
+    color: #ffffff;
+  }
+
+  .protected-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    color: #94a3b8;
+    padding: 0.3rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.725rem;
     font-weight: 600;
   }
 
-  .wp-progress-bar {
-    width: 100%;
-    height: 6px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 9999px;
-    overflow: hidden;
-  }
-
-  .wp-progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #38bdf8, #0284c7);
-    border-radius: 9999px;
-  }
-
-  .wp-card-footer {
-    display: flex;
-    justify-content: flex-end;
-    font-size: 0.75rem;
-  }
-
-  .other-dbs-table-wrap {
+  /* Tablas de Datos */
+  .table-responsive {
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
   }
 
-  .dbs-table {
+  .data-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.85rem;
+  }
+
+  .data-table th {
     text-align: left;
-  }
-
-  .dbs-table th {
-    padding: 10px 12px;
-    color: var(--text-muted);
+    padding: 0.75rem 1rem;
+    color: #94a3b8;
     font-weight: 600;
-    border-bottom: 1px solid var(--card-border);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
   }
 
-  .dbs-table td {
-    padding: 10px 12px;
-    color: var(--text-main);
-    border-bottom: 1px solid var(--card-border);
+  .data-table td {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    vertical-align: middle;
   }
 
-  .font-bold {
-    font-weight: 700;
+  .data-table tr:hover td {
+    background: rgba(30, 41, 59, 0.3);
   }
 
-  .table-progress {
-    width: 100px;
-    height: 6px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 9999px;
-    overflow: hidden;
+  .schema-name-cell, .file-cell, .user-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
-  .table-fill {
-    height: 100%;
-    background: #64748b;
-    border-radius: 9999px;
+  .schema-title, .file-name {
+    font-weight: 600;
+    color: #f8fafc;
   }
 
-  .empty-dbs {
-    padding: 24px;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    background: var(--surface-muted);
-    border-radius: 8px;
-    border: 1px dashed var(--card-border);
-  }
-
-  .empty-dbs code {
-    color: #38bdf8;
-    background: rgba(56, 189, 248, 0.1);
-    padding: 2px 6px;
+  .system-badge {
+    font-size: 0.675rem;
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    padding: 0.15rem 0.45rem;
     border-radius: 4px;
   }
 
-  /* Mobile Responsive */
-  @media (max-width: 768px) {
-    .banner-card {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 1rem;
-      padding: 1.15rem;
-      border-radius: 14px;
-    }
-
-    .banner-actions {
-      justify-content: space-between;
-      width: 100%;
-    }
-
-    .metrics-grid {
-      grid-template-columns: 1fr;
-      gap: 0.85rem;
-    }
-
-    .wp-grid {
-      grid-template-columns: 1fr;
-      gap: 0.85rem;
-    }
-
-    .section-container {
-      padding: 1.15rem;
-      border-radius: 14px;
-    }
+  .size-pill {
+    background: rgba(56, 189, 248, 0.1);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    color: #38bdf8;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
   }
 
-  .font-mono {
-    font-family: monospace;
+  .db-tag {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    color: #cbd5e1;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.775rem;
   }
 
-  .text-muted {
+  .badge-role {
+    font-size: 0.725rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+  }
+
+  .role-root {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+
+  .role-system {
+    background: rgba(148, 163, 184, 0.1);
     color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.2);
   }
 
-  :global(.spin) {
+  .role-standard {
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+  }
+
+  /* Formulario de Usuarios */
+  .user-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .form-label {
+    font-size: 0.825rem;
+    font-weight: 600;
+    color: #cbd5e1;
+  }
+
+  .required {
+    color: #ef4444;
+  }
+
+  .input-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  :global(.icon-input) {
+    position: absolute;
+    left: 0.85rem;
+    color: #64748b;
+    pointer-events: none;
+  }
+
+  .form-control {
+    width: 100%;
+    background: #020617;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 8px;
+    padding: 0.6rem 0.85rem 0.6rem 2.4rem;
+    color: #f8fafc;
+    font-size: 0.85rem;
+    box-sizing: border-box;
+    transition: all 0.2s;
+  }
+
+  .form-control:focus {
+    outline: none;
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+  }
+
+  .form-bottom-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.08);
+    padding-top: 1rem;
+  }
+
+  /* Modales */
+  .modal-backdrop {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+  }
+
+  .modal-card {
+    background: #0f172a;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 480px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    padding-bottom: 0.75rem;
+  }
+
+  .modal-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .modal-title h4 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #f8fafc;
+  }
+
+  .btn-close-modal {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+  }
+
+  .modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+
+  .btn-cancel {
+    background: transparent;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    color: #cbd5e1;
+    padding: 0.55rem 1rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* Estados vacíos y loading */
+  .state-loading, .state-empty {
+    padding: 3rem 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: #94a3b8;
+    font-size: 0.9rem;
+    text-align: center;
+  }
+
+  /* Utilidades */
+  .text-cyan { color: #38bdf8; }
+  .text-green { color: #4ade80; }
+  .text-amber { color: #fbbf24; }
+  .text-muted { color: #64748b; }
+  .text-xs { font-size: 0.75rem; }
+  .text-right { text-align: right; }
+  .font-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+
+  .spin {
     animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 </style>
