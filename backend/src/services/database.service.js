@@ -350,6 +350,7 @@ export const createBackup = async (dbName) => {
             outStream.end(() => resolve());
           });
           stream.on('error', reject);
+          outStream.on('error', reject);
         });
 
         const inspectData = await execInstance.inspect();
@@ -440,22 +441,44 @@ export const listBackups = () => {
 
 /**
  * Valida y obtiene la ruta absoluta segura de un archivo de respaldo.
+ * Garantiza el uso estricto de path.basename(), bloqueo contra path traversal
+ * ('..', '/', '\', caracteres de control) y verificación de frontera de directorio.
  */
 export const getBackupFilePath = (fileName) => {
   if (!fileName || typeof fileName !== 'string') {
     throw new Error('Nombre de archivo de respaldo inválido.');
   }
 
-  // Prevenir Directory Traversal
-  if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\') || !fileName.endsWith('.sql')) {
-    throw new Error('Nombre de archivo no permitido.');
+  // 1. Extraer nombre base estricto sin componentes de ruta
+  const safeBaseName = path.basename(fileName.trim());
+
+  // 2. Prevenir Directory Traversal y secuencias no autorizadas
+  if (
+    fileName.trim() !== safeBaseName ||
+    safeBaseName.includes('..') ||
+    safeBaseName.includes('/') ||
+    safeBaseName.includes('\\') ||
+    !safeBaseName.endsWith('.sql') ||
+    /[\x00-\x1f\x7f]/.test(safeBaseName)
+  ) {
+    const error = new Error('Nombre de archivo no permitido: contiene secuencias de ruta o caracteres de escape.');
+    error.statusCode = 400;
+    throw error;
   }
 
   const backupDir = getBackupDir();
-  const fullPath = path.join(backupDir, fileName);
+  const resolvedDir = path.resolve(backupDir);
+  const fullPath = path.resolve(backupDir, safeBaseName);
+
+  // 3. Verificación de frontera de directorio: la ruta resuelta DEBE pertenecer a backupDir
+  if (!fullPath.startsWith(resolvedDir + path.sep)) {
+    const error = new Error('Violación de seguridad: intento de acceso fuera del directorio de respaldos.');
+    error.statusCode = 403;
+    throw error;
+  }
 
   if (!fs.existsSync(fullPath)) {
-    const error = new Error(`El archivo de respaldo "${fileName}" no existe.`);
+    const error = new Error(`El archivo de respaldo "${safeBaseName}" no existe.`);
     error.statusCode = 404;
     throw error;
   }

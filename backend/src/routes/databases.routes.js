@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import path from 'path';
 import {
   getMariaDbTelemetry,
   createSchema,
@@ -213,8 +214,9 @@ const downloadBackupHandler = (req, res) => {
   try {
     const { filename } = req.params;
     const fullPath = getBackupFilePath(filename);
+    const safeBaseName = path.basename(fullPath);
 
-    res.download(fullPath, filename, (err) => {
+    res.download(fullPath, safeBaseName, (err) => {
       if (err && !res.headersSent) {
         res.status(500).json({
           success: false,
