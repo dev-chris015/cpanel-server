@@ -10,6 +10,7 @@
   import ContainersView from './views/ContainersView.svelte';
   import TerminalView from './views/TerminalView.svelte';
   import DatabasesView from './views/DatabasesView.svelte';
+  import ProxyView from './views/ProxyView.svelte';
 
   // Authentication State
   let isAuthenticated = false;
@@ -40,6 +41,7 @@
   $: viewInfo = {
     dashboard: { title: 'Dashboard', subtitle: 'Telemetría de Azure VM y resumen visual de contenedores.' },
     containers: { title: 'Gestión de Contenedores', subtitle: 'Monitoreo de métricas en caliente, ciclo de vida e inspección técnica.' },
+    proxy: { title: 'Nginx Virtual Hosts', subtitle: 'Gestión declarativa de dominios, proxy inverso y certificados SSL con verificación sintáctica.' },
     terminal: { title: 'Terminal de Logs', subtitle: 'Transmisión de registros en tiempo real en consola interactiva.' },
     databases: { title: 'MariaDB Telemetry', subtitle: 'Monitoreo de conexiones, hilos y almacenamiento de bases de datos WordPress.' }
   }[activeTab] || { title: 'cPanel', subtitle: 'Panel de administración' };
@@ -279,6 +281,8 @@
           {deployIsError}
           {handleDeploy}
         />
+      {:else if activeTab === 'proxy'}
+        <ProxyView {containers} />
       {:else if activeTab === 'terminal'}
         <TerminalView {containers} />
       {:else if activeTab === 'databases'}

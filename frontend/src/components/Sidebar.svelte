@@ -6,6 +6,7 @@
     Package,
     Database,
     Cpu,
+    Globe,
     X
   } from 'lucide-svelte';
 
@@ -63,6 +64,12 @@
         <a href="#containers" on:click|preventDefault={() => handleNav('containers')}>
           <Package size={18} />
           <span>Contenedores</span>
+        </a>
+      </li>
+      <li class:active={activeTab === 'proxy'}>
+        <a href="#proxy" on:click|preventDefault={() => handleNav('proxy')}>
+          <Globe size={18} />
+          <span>Nginx VHosts</span>
         </a>
       </li>
       <li class:active={activeTab === 'terminal'}>
