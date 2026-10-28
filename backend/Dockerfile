@@ -2,8 +2,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Instalar Nginx para permitir validación sintáctica de VHosts (nginx -t)
-RUN apk add --no-cache nginx
+# Instalar Nginx para validación sintáctica (nginx -t) y cliente MariaDB para mariadb-dump
+RUN apk add --no-cache nginx mariadb-client
 
 COPY package*.json ./
 
