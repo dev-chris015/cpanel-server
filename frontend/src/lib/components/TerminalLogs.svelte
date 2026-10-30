@@ -4,26 +4,42 @@
   import { FitAddon } from '@xterm/addon-fit';
   import '@xterm/xterm/css/xterm.css';
   import { socket } from '../socket.js';
-  import { Trash2, Terminal as TerminalIcon } from 'lucide-svelte';
+  import { 
+    Trash2, 
+    Terminal as TerminalIcon,
+    Play,
+    Pause,
+    Maximize2,
+    Minimize2,
+    Layers,
+    RefreshCw
+  } from 'lucide-svelte';
 
   export let containerId = '';
   export let containerName = '';
+  export let containers = [];
 
   let terminalContainer;
   let term;
   let fitAddon;
   let currentSubscribedId = null;
 
+  // Estados de control
+  let isPaused = false;
+  let isFullscreen = false;
+  let selectedTail = 100;
+  const tailOptions = [50, 100, 500];
+
   function initTerminal() {
     if (!terminalContainer) return;
 
     term = new Terminal({
-      cursorBlink: true,
+      cursorBlink: false,
       fontFamily: 'Fira Code, Menlo, Monaco, Consolas, "Courier New", monospace',
       fontSize: 13,
       lineHeight: 1.25,
       theme: {
-        background: '#000000',
+        background: '#05070f',
         foreground: '#f8fafc',
         cursor: '#38bdf8',
         selectionBackground: 'rgba(56, 189, 248, 0.3)',
@@ -55,13 +71,11 @@
 
     try {
       fitAddon.fit();
-    } catch (e) {
-      // Ignorar si el contenedor no tiene dimensiones aún
-    }
+    } catch (e) {}
   }
 
   function handleLogData(data) {
-    if (term && data && data.log) {
+    if (term && data && data.log && !isPaused) {
       term.write(data.log);
     }
   }
@@ -88,7 +102,7 @@
     }
   }
 
-  function subscribeLogs(id) {
+  export function subscribeLogs(id, tail = selectedTail) {
     unsubscribeCurrent();
 
     if (!id || !socket) {
@@ -101,16 +115,17 @@
 
     if (term) {
       term.clear();
-      term.writeln(`\x1b[36m--- Conectando stream de logs: ${containerName || id.slice(0, 12)} ---\x1b[0m\r\n`);
+      term.writeln(`\x1b[36m--- [Stream de logs en vivo] ${containerName || id.slice(0, 12)} (Tail: ${tail} líneas) ---\x1b[0m\r\n`);
     }
 
     currentSubscribedId = id;
+    isPaused = false;
 
     socket.on(`container-logs:${id}`, handleLogData);
     socket.on(`container-logs:${id}:ended`, handleLogEnded);
     socket.on('logs-error', handleLogError);
 
-    socket.emit('subscribe-logs', { containerId: id, tail: 150 });
+    socket.emit('subscribe-logs', { containerId: id, tail: Number(tail) || 100 });
   }
 
   export function clearTerminal() {
@@ -119,12 +134,33 @@
     }
   }
 
-  // Reactividad al cambiar containerId
-  $: if (term && containerId !== currentSubscribedId) {
-    subscribeLogs(containerId);
+  export function togglePause() {
+    isPaused = !isPaused;
+    if (term) {
+      if (isPaused) {
+        term.writeln('\r\n\x1b[33m--- [STREAM PAUSADO] Los nuevos eventos no se imprimirán hasta reanudar ---\x1b[0m');
+      } else {
+        term.writeln('\r\n\x1b[32m--- [STREAM REANUDADO] ---\x1b[0m');
+      }
+    }
   }
 
-  function handleResize() {
+  export function toggleFullscreen() {
+    isFullscreen = !isFullscreen;
+    setTimeout(() => {
+      fit();
+    }, 150);
+  }
+
+  function handleTailChange(event) {
+    const newTail = Number(event.target.value) || 100;
+    selectedTail = newTail;
+    if (containerId) {
+      subscribeLogs(containerId, newTail);
+    }
+  }
+
+  export function fit() {
     if (fitAddon) {
       try {
         fitAddon.fit();
@@ -132,12 +168,21 @@
     }
   }
 
+  // Reactividad al cambiar containerId desde el exterior
+  $: if (term && containerId !== currentSubscribedId) {
+    subscribeLogs(containerId, selectedTail);
+  }
+
+  function handleResize() {
+    fit();
+  }
+
   onMount(() => {
     initTerminal();
     window.addEventListener('resize', handleResize);
 
     if (containerId) {
-      subscribeLogs(containerId);
+      subscribeLogs(containerId, selectedTail);
     } else if (term) {
       term.writeln('\x1b[90mEsperando selección de contenedor...\x1b[0m');
     }
@@ -153,20 +198,74 @@
   });
 </script>
 
-<div class="terminal-logs-card">
+<div class="terminal-logs-card" class:fullscreen={isFullscreen}>
   <div class="terminal-header">
     <div class="header-left">
-      <div class="status-indicator" class:active={!!containerId}></div>
+      <div class="status-indicator" class:active={!!containerId && !isPaused} class:paused={isPaused}></div>
       <TerminalIcon size={16} class="icon-term" />
       <span class="title">
         Logs en Tiempo Real:
         <strong class="target-name">{containerName || (containerId ? containerId.slice(0, 12) : 'Sin seleccionar')}</strong>
       </span>
+      {#if isPaused}
+        <span class="badge-paused">Pausado</span>
+      {/if}
     </div>
+
     <div class="header-actions">
-      <button class="btn-clear" on:click={clearTerminal} title="Limpiar salida de consola">
+      <!-- Selector de Líneas Iniciales (Tail) -->
+      <div class="tail-selector-box" title="Líneas históricas iniciales a solicitar">
+        <span class="tail-label">Tail:</span>
+        <select value={selectedTail} on:change={handleTailChange} class="tail-select">
+          {#each tailOptions as opt}
+            <option value={opt}>{opt} líneas</option>
+          {/each}
+        </select>
+      </div>
+
+      <!-- Botón Pausar / Reanudar -->
+      <button 
+        type="button"
+        class="btn-tool" 
+        class:btn-active={isPaused}
+        on:click={togglePause} 
+        disabled={!containerId}
+        title={isPaused ? 'Reanudar streaming de logs' : 'Pausar streaming de logs'}
+      >
+        {#if isPaused}
+          <Play size={14} class="text-green" />
+          <span>Reanudar</span>
+        {:else}
+          <Pause size={14} class="text-amber" />
+          <span>Pausar</span>
+        {/if}
+      </button>
+
+      <!-- Botón Limpiar Consola -->
+      <button 
+        type="button"
+        class="btn-tool" 
+        on:click={clearTerminal} 
+        title="Limpiar salida actual de la terminal"
+      >
         <Trash2 size={14} />
         <span>Limpiar</span>
+      </button>
+
+      <!-- Botón Pantalla Completa -->
+      <button 
+        type="button"
+        class="btn-tool" 
+        on:click={toggleFullscreen} 
+        title={isFullscreen ? 'Salir de pantalla completa' : 'Ver logs en pantalla completa'}
+      >
+        {#if isFullscreen}
+          <Minimize2 size={14} />
+          <span>Restaurar</span>
+        {:else}
+          <Maximize2 size={14} />
+          <span>Pantalla Completa</span>
+        {/if}
       </button>
     </div>
   </div>
@@ -178,29 +277,43 @@
   .terminal-logs-card {
     display: flex;
     flex-direction: column;
-    background: var(--card-bg, #121214);
-    border: 1px solid var(--card-border, #222225);
+    background: #020617;
+    border: 1px solid rgba(148, 163, 184, 0.15);
     border-radius: 12px;
     overflow: hidden;
     height: 100%;
-    min-height: 380px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    min-height: 480px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .terminal-logs-card.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    border-radius: 0;
+    border: none;
   }
 
   .terminal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 16px;
-    background: var(--surface-muted, #18181b);
-    border-bottom: 1px solid var(--card-border, rgba(255, 255, 255, 0.06));
+    padding: 0.65rem 1rem;
+    background: #09090b;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    flex-wrap: wrap;
+    gap: 0.75rem;
   }
 
   .header-left {
     display: flex;
     align-items: center;
-    gap: 8px;
-    color: var(--text-main, #e2e8f0);
+    gap: 0.5rem;
+    color: #e2e8f0;
     font-size: 0.85rem;
   }
 
@@ -213,8 +326,13 @@
   }
 
   .status-indicator.active {
-    background: #10b981;
-    box-shadow: 0 0 8px #10b981;
+    background: #22c55e;
+    box-shadow: 0 0 8px #22c55e;
+  }
+
+  .status-indicator.paused {
+    background: #eab308;
+    box-shadow: 0 0 8px #eab308;
   }
 
   :global(.icon-term) {
@@ -224,41 +342,96 @@
   .target-name {
     color: #38bdf8;
     margin-left: 4px;
-    font-family: monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  .badge-paused {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.45rem;
+    background: rgba(234, 179, 8, 0.15);
+    border: 1px solid rgba(234, 179, 8, 0.3);
+    color: #fde047;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
   }
 
   .header-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.65rem;
+    flex-wrap: wrap;
   }
 
-  .btn-clear {
+  .tail-selector-box {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    background: var(--surface-muted, rgba(255, 255, 255, 0.05));
-    border: 1px solid var(--card-border, rgba(255, 255, 255, 0.1));
+    gap: 0.35rem;
+    background: #0f172a;
+    border: 1px solid rgba(148, 163, 184, 0.2);
     border-radius: 6px;
-    color: var(--text-muted, #94a3b8);
+    padding: 0.2rem 0.5rem;
+  }
+
+  .tail-label {
     font-size: 0.75rem;
+    color: #94a3b8;
     font-weight: 500;
+  }
+
+  .tail-select {
+    background: transparent;
+    border: none;
+    color: #f8fafc;
+    font-size: 0.75rem;
+    outline: none;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .tail-select option {
+    background: #0f172a;
+    color: #f8fafc;
+  }
+
+  .btn-tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.75rem;
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 6px;
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
   }
 
-  .btn-clear:hover {
-    background: rgba(239, 68, 68, 0.15);
-    border-color: rgba(239, 68, 68, 0.3);
-    color: #f87171;
+  .btn-tool:hover:not(:disabled) {
+    background: rgba(148, 163, 184, 0.2);
+    color: #ffffff;
+    border-color: rgba(148, 163, 184, 0.3);
+  }
+
+  .btn-tool:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-tool.btn-active {
+    background: rgba(234, 179, 8, 0.15);
+    border-color: rgba(234, 179, 8, 0.4);
+    color: #fde047;
   }
 
   .terminal-viewport {
     flex: 1;
-    padding: 12px;
-    background: #000000;
-    min-height: 320px;
+    padding: 0.75rem;
+    background: #05070f;
+    min-height: 400px;
     overflow: hidden;
   }
 
@@ -267,6 +440,9 @@
   }
 
   :global(.terminal-viewport .xterm-viewport) {
-    background-color: #000000 !important;
+    background-color: #05070f !important;
   }
+
+  .text-green { color: #4ade80; }
+  .text-amber { color: #fbbf24; }
 </style>

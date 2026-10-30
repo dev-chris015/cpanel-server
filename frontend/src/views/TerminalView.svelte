@@ -8,35 +8,43 @@
     Minimize2,
     Trash2,
     Play,
-    Square
+    Pause
   } from 'lucide-svelte';
-  import XtermTerminal from '../lib/components/XtermTerminal.svelte';
+  import TerminalLogs from '../lib/components/TerminalLogs.svelte';
 
   export let containers = [];
 
   let selectedContainerId = '';
   let selectedContainerName = '';
   let isFullscreen = false;
-  let terminalRef;
+  let logsRef;
 
-  // Filtrar contenedores activos en ejecución
-  $: runningContainers = containers.filter(c => (c.State || c.state) === 'running');
+  // Filtrar contenedores (priorizando los que están activos o listados: wp_site_1, wp_site_2, mariadb, nginx-proxy, etc.)
+  $: allContainers = containers.map(c => {
+    const id = c.id || c.Id;
+    const name = c.name || c.Names?.[0]?.replace(/^\//, '') || id.slice(0, 12);
+    const state = (c.State || c.state || '').toLowerCase();
+    return {
+      id,
+      name,
+      state,
+      isRunning: state === 'running'
+    };
+  });
 
-  // Seleccionar automáticamente el primer contenedor activo si no se ha seleccionado ninguno
-  $: if (!selectedContainerId && runningContainers.length > 0) {
-    const firstRunning = runningContainers[0];
-    const id = firstRunning.id || firstRunning.Id;
-    const name = firstRunning.name || firstRunning.Names?.[0]?.replace(/^\//, '') || id.slice(0, 12);
-    selectedContainerId = id;
-    selectedContainerName = name;
+  // Seleccionar automáticamente el primer contenedor activo o disponible si no se ha seleccionado ninguno
+  $: if (!selectedContainerId && allContainers.length > 0) {
+    const running = allContainers.find(c => c.isRunning) || allContainers[0];
+    selectedContainerId = running.id;
+    selectedContainerName = running.name;
   }
 
   function handleSelectContainer(event) {
     const id = event.target.value;
     selectedContainerId = id;
-    const match = containers.find(c => (c.id || c.Id) === id);
+    const match = allContainers.find(c => c.id === id);
     if (match) {
-      selectedContainerName = match.name || match.Names?.[0]?.replace(/^\//, '') || id.slice(0, 12);
+      selectedContainerName = match.name;
     } else {
       selectedContainerName = '';
     }
@@ -45,20 +53,22 @@
   function toggleFullscreen() {
     isFullscreen = !isFullscreen;
     setTimeout(() => {
-      terminalRef?.fit();
+      logsRef?.fit();
     }, 150);
   }
 
   function handleClear() {
-    terminalRef?.clear();
+    logsRef?.clearTerminal();
+  }
+
+  function handleTogglePause() {
+    logsRef?.togglePause();
   }
 
   function handleReconnect() {
-    const current = selectedContainerId;
-    selectedContainerId = '';
-    setTimeout(() => {
-      selectedContainerId = current;
-    }, 100);
+    if (selectedContainerId) {
+      logsRef?.subscribeLogs(selectedContainerId);
+    }
   }
 </script>
 
@@ -68,7 +78,7 @@
     <div class="toolbar-left">
       <div class="icon-label">
         <Terminal size={18} class="term-icon" />
-        <span class="label-text">Terminal Interactiva (PTY TTY):</span>
+        <span class="label-text">Visor de Logs en Vivo:</span>
       </div>
 
       <div class="selector-box">
@@ -78,49 +88,66 @@
           on:change={handleSelectContainer}
           class="container-select"
         >
-          {#if runningContainers.length === 0}
-            <option value="">No hay contenedores en ejecución</option>
+          {#if allContainers.length === 0}
+            <option value="">No hay contenedores registrados</option>
           {:else}
-            <option value="" disabled>Selecciona un contenedor activo...</option>
-            {#each runningContainers as c}
-              {@const id = c.id || c.Id}
-              {@const name = c.name || c.Names?.[0]?.replace(/^\//, '') || id.slice(0, 12)}
-              <option value={id}>
-                {name} — {id.slice(0, 8)}
-              </option>
-            {/each}
+            <option value="" disabled>Selecciona un contenedor...</option>
+            <optgroup label="Contenedores Activos (Online)">
+              {#each allContainers.filter(c => c.isRunning) as c}
+                <option value={c.id}>
+                  {c.name} — {c.id.slice(0, 8)}
+                </option>
+              {/each}
+            </optgroup>
+            {#if allContainers.some(c => !c.isRunning)}
+              <optgroup label="Contenedores Detenidos">
+                {#each allContainers.filter(c => !c.isRunning) as c}
+                  <option value={c.id}>
+                    {c.name} ({c.state || 'detenido'})
+                  </option>
+                {/each}
+              </optgroup>
+            {/if}
           {/if}
         </select>
       </div>
 
       {#if selectedContainerId}
-        <span class="status-running-badge">
-          <span class="pulse-dot"></span> Online
-        </span>
+        {@const selectedItem = allContainers.find(c => c.id === selectedContainerId)}
+        {#if selectedItem?.isRunning}
+          <span class="status-running-badge">
+            <span class="pulse-dot"></span> Online
+          </span>
+        {:else}
+          <span class="status-stopped-badge">
+            Detenido
+          </span>
+        {/if}
       {/if}
     </div>
 
     <div class="toolbar-right">
-      <!-- Botón Limpiar Pantalla -->
-      <button 
-        type="button" 
-        class="btn-tool" 
-        on:click={handleClear}
-        title="Limpiar pantalla de la terminal"
-      >
-        <Trash2 size={15} />
-        <span>Limpiar</span>
-      </button>
-
-      <!-- Botón Reconectar -->
+      <!-- Botón Reconectar Stream -->
       <button 
         type="button" 
         class="btn-tool" 
         on:click={handleReconnect}
-        title="Reconectar sesión interactiva"
+        disabled={!selectedContainerId}
+        title="Reconectar stream WebSocket de logs"
       >
-        <RefreshCw size={15} />
+        <RefreshCw size={14} />
         <span>Reconectar</span>
+      </button>
+
+      <!-- Botón Limpiar Consola -->
+      <button 
+        type="button" 
+        class="btn-tool" 
+        on:click={handleClear}
+        title="Limpiar pantalla del visor de logs"
+      >
+        <Trash2 size={14} />
+        <span>Limpiar</span>
       </button>
 
       <!-- Botón Pantalla Completa -->
@@ -131,27 +158,29 @@
         title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
       >
         {#if isFullscreen}
-          <Minimize2 size={15} />
+          <Minimize2 size={14} />
           <span>Restaurar</span>
         {:else}
-          <Maximize2 size={15} />
+          <Maximize2 size={14} />
           <span>Pantalla Completa</span>
         {/if}
       </button>
     </div>
   </div>
 
-  <!-- Terminal Component -->
+  <!-- Contenedor del Visor de Logs -->
   <div class="terminal-content-area">
     {#if selectedContainerId}
-      <XtermTerminal 
-        bind:this={terminalRef}
+      <TerminalLogs 
+        bind:this={logsRef}
         containerId={selectedContainerId}
+        containerName={selectedContainerName}
+        {containers}
       />
     {:else}
       <div class="empty-terminal-prompt">
         <Terminal size={36} class="text-muted" />
-        <p>Selecciona un contenedor en ejecución para iniciar la consola interactiva.</p>
+        <p>Selecciona un contenedor para conectarte al stream en tiempo real.</p>
       </div>
     {/if}
   </div>
@@ -241,6 +270,16 @@
     border-color: #38bdf8;
   }
 
+  .container-select optgroup {
+    background: #09090b;
+    color: #94a3b8;
+  }
+
+  .container-select option {
+    background: #0f172a;
+    color: #f8fafc;
+  }
+
   .status-running-badge {
     display: inline-flex;
     align-items: center;
@@ -249,6 +288,18 @@
     background: rgba(34, 197, 94, 0.12);
     color: #4ade80;
     border: 1px solid rgba(34, 197, 94, 0.25);
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+
+  .status-stopped-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.5rem;
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.2);
     border-radius: 9999px;
     font-size: 0.7rem;
     font-weight: 600;
@@ -277,10 +328,15 @@
     transition: all 0.2s;
   }
 
-  .btn-tool:hover {
+  .btn-tool:hover:not(:disabled) {
     background: rgba(148, 163, 184, 0.2);
     color: #ffffff;
     border-color: rgba(148, 163, 184, 0.3);
+  }
+
+  .btn-tool:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .terminal-content-area {
