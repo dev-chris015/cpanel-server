@@ -4,7 +4,9 @@ import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
 import Docker from 'dockerode';
-import { DOCKER_SOCKET_PATH, NGINX_VHOSTS_DIR, NGINX_CONTAINER_NAME } from '../config/paths.js';
+import { DOCKER_SOCKET_PATH, NGINX_VHOSTS_DIR, NGINX_CONTAINER_NAME, CERTS_DIR } from '../config/paths.js';
+
+export { NGINX_VHOSTS_DIR, NGINX_CONTAINER_NAME, CERTS_DIR };
 
 const execAsync = util.promisify(exec);
 const docker = new Docker({ socketPath: DOCKER_SOCKET_PATH });
@@ -12,24 +14,18 @@ const router = Router();
 
 /**
  * Obtiene el directorio donde se almacenan las configuraciones de VHost.
- * Prioriza NGINX_VHOSTS_DIR o /etc/nginx/conf.d; si no tiene permisos, usa fallback local.
+ * Prioriza NGINX_CONF_DIR, NGINX_VHOSTS_DIR o /srv/nginx/conf.d; si no tiene permisos, usa fallback local.
  */
 export const getVHostsDir = () => {
-  if (process.env.NGINX_VHOSTS_DIR) {
-    if (!fs.existsSync(process.env.NGINX_VHOSTS_DIR)) {
-      fs.mkdirSync(process.env.NGINX_VHOSTS_DIR, { recursive: true });
-    }
-    return process.env.NGINX_VHOSTS_DIR;
-  }
+  const configuredDir = process.env.NGINX_CONF_DIR || process.env.NGINX_VHOSTS_DIR || NGINX_VHOSTS_DIR || '/srv/nginx/conf.d';
 
-  const defaultDir = NGINX_VHOSTS_DIR || '/etc/nginx/conf.d';
   try {
-    if (!fs.existsSync(defaultDir)) {
-      fs.mkdirSync(defaultDir, { recursive: true });
+    if (!fs.existsSync(configuredDir)) {
+      fs.mkdirSync(configuredDir, { recursive: true });
     }
     // Probar si el directorio es escribible
-    fs.accessSync(defaultDir, fs.constants.W_OK);
-    return defaultDir;
+    fs.accessSync(configuredDir, fs.constants.W_OK);
+    return configuredDir;
   } catch {
     const fallbackDir = path.resolve(process.cwd(), 'nginx_vhosts');
     if (!fs.existsSync(fallbackDir)) {
@@ -79,8 +75,9 @@ export const generateVHostConfig = ({
     : `http://${target.trim()}`;
 
   const isSsl = Boolean(hasSsl === true || hasSsl === 'true');
-  const cert = sslCertPath || `/etc/letsencrypt/live/${cleanDomain}/fullchain.pem`;
-  const key = sslKeyPath || `/etc/letsencrypt/live/${cleanDomain}/privkey.pem`;
+  const defaultCertsBase = process.env.CERTS_DIR || CERTS_DIR || '/srv/nginx/certs';
+  const cert = sslCertPath || `${defaultCertsBase}/${cleanDomain}/fullchain.pem`;
+  const key = sslKeyPath || `${defaultCertsBase}/${cleanDomain}/privkey.pem`;
 
   if (isSsl) {
     // Ambos bloques (HTTP en puerto 80 y HTTPS en puerto 443) contienen resolver 127.0.0.11
@@ -215,7 +212,7 @@ export const testNginxConfig = async () => {
 
   // 2. Probar en contenedor Docker de Nginx
   try {
-    const containerName = process.env.NGINX_CONTAINER_NAME || NGINX_CONTAINER_NAME || 'cpanel-frontend';
+    const containerName = process.env.NGINX_CONTAINER_NAME || NGINX_CONTAINER_NAME || 'nginx-proxy';
     const container = docker.getContainer(containerName);
     const execInstance = await container.exec({
       Cmd: ['nginx', '-t'],
@@ -286,7 +283,7 @@ export const reloadNginx = async () => {
 
   // 2. Recargar en contenedor Docker
   try {
-    const containerName = process.env.NGINX_CONTAINER_NAME || NGINX_CONTAINER_NAME || 'cpanel-frontend';
+    const containerName = process.env.NGINX_CONTAINER_NAME || NGINX_CONTAINER_NAME || 'nginx-proxy';
     const container = docker.getContainer(containerName);
     const execInstance = await container.exec({
       Cmd: ['nginx', '-s', 'reload'],
