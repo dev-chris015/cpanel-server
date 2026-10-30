@@ -304,60 +304,72 @@
       <!-- Activos -->
       <button 
         type="button" 
-        class="docker-count-card border-running" 
+        class="docker-count-card card-running" 
         on:click={() => navigateTo('containers')}
       >
-        <div class="count-icon-box bg-running-soft">
-          <Play size={20} class="text-green" />
-        </div>
-        <div class="count-details">
-          <span class="count-value font-mono text-green">{runningCount}</span>
-          <span class="count-title">Contenedores Activos</span>
+        <div class="card-accent accent-running"></div>
+        <div class="count-card-inner">
+          <div class="count-icon-box bg-running-soft">
+            <Play size={20} class="text-green" />
+          </div>
+          <div class="count-details">
+            <span class="count-value font-mono text-green">{runningCount}</span>
+            <span class="count-title">Contenedores Activos</span>
+          </div>
         </div>
       </button>
 
       <!-- Pausados -->
       <button 
         type="button" 
-        class="docker-count-card border-paused" 
+        class="docker-count-card card-paused" 
         on:click={() => navigateTo('containers')}
       >
-        <div class="count-icon-box bg-paused-soft">
-          <Clock size={20} class="text-yellow" />
-        </div>
-        <div class="count-details">
-          <span class="count-value font-mono text-yellow">{pausedCount}</span>
-          <span class="count-title">Pausados</span>
+        <div class="card-accent accent-paused"></div>
+        <div class="count-card-inner">
+          <div class="count-icon-box bg-paused-soft">
+            <Clock size={20} class="text-yellow" />
+          </div>
+          <div class="count-details">
+            <span class="count-value font-mono text-yellow">{pausedCount}</span>
+            <span class="count-title">Pausados</span>
+          </div>
         </div>
       </button>
 
       <!-- Detenidos -->
       <button 
         type="button" 
-        class="docker-count-card border-stopped" 
+        class="docker-count-card card-stopped" 
         on:click={() => navigateTo('containers')}
       >
-        <div class="count-icon-box bg-stopped-soft">
-          <Square size={20} class="text-slate" />
-        </div>
-        <div class="count-details">
-          <span class="count-value font-mono text-slate">{stoppedCount}</span>
-          <span class="count-title">Detenidos</span>
+        <div class="card-accent accent-stopped"></div>
+        <div class="count-card-inner">
+          <div class="count-icon-box bg-stopped-soft">
+            <Square size={20} class="text-slate" />
+          </div>
+          <div class="count-details">
+            <span class="count-value font-mono text-slate">{stoppedCount}</span>
+            <span class="count-title">Detenidos</span>
+          </div>
         </div>
       </button>
 
       <!-- Total Registrados -->
       <button 
         type="button" 
-        class="docker-count-card border-total" 
+        class="docker-count-card card-total" 
         on:click={() => navigateTo('containers')}
       >
-        <div class="count-icon-box bg-total-soft">
-          <Box size={20} class="text-cyan" />
-        </div>
-        <div class="count-details">
-          <span class="count-value font-mono text-cyan">{totalCount}</span>
-          <span class="count-title">Total Ecosistema</span>
+        <div class="card-accent accent-total"></div>
+        <div class="count-card-inner">
+          <div class="count-icon-box bg-total-soft">
+            <Box size={20} class="text-cyan" />
+          </div>
+          <div class="count-details">
+            <span class="count-value font-mono text-cyan">{totalCount}</span>
+            <span class="count-title">Total Ecosistema</span>
+          </div>
         </div>
       </button>
     </div>
@@ -625,6 +637,7 @@
   }
 
   .service-card {
+    position: relative;
     background: var(--card-bg, #121214);
     border: 1px solid var(--card-border, #222225);
     border-radius: 14px;
@@ -634,13 +647,24 @@
     justify-content: space-between;
     gap: 1.15rem;
     box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.4);
-    transition: transform 0.2s ease, border-color 0.2s ease;
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), 
+                border-color 0.22s ease, 
+                box-shadow 0.22s ease;
     box-sizing: border-box;
+    overflow: hidden;
   }
 
   .service-card:hover {
-    border-color: rgba(56, 189, 248, 0.25);
+    box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.5);
     transform: translateY(-2px);
+  }
+
+  .netdata-card:hover {
+    border-color: rgba(16, 185, 129, 0.35);
+  }
+
+  .vnc-card:hover {
+    border-color: rgba(99, 102, 241, 0.35);
   }
 
   .service-header {
@@ -655,7 +679,7 @@
     justify-content: center;
     width: 44px;
     height: 44px;
-    border-radius: 10px;
+    border-radius: 12px;
     flex-shrink: 0;
   }
 
@@ -698,10 +722,10 @@
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    padding: 0.18rem 0.55rem;
+    padding: 0.2rem 0.6rem;
     border-radius: 9999px;
     font-size: 0.7rem;
-    font-weight: 600;
+    font-weight: 700;
     white-space: nowrap;
   }
 
@@ -718,8 +742,8 @@
   }
 
   .service-status-pill .dot {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background-color: currentColor;
   }
@@ -728,7 +752,7 @@
     margin: 0;
     font-size: 0.8rem;
     color: var(--text-muted, #a1a1aa);
-    line-height: 1.4;
+    line-height: 1.45;
   }
 
   .btn-service {
@@ -737,41 +761,45 @@
     justify-content: center;
     gap: 0.5rem;
     width: 100%;
-    padding: 0.65rem 1rem;
-    border-radius: 8px;
+    padding: 0.7rem 1rem;
+    border-radius: 10px;
     font-size: 0.825rem;
     font-weight: 600;
     text-decoration: none;
-    transition: all 0.2s;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     box-sizing: border-box;
   }
 
   .btn-netdata {
-    background: rgba(16, 185, 129, 0.15);
+    background: rgba(16, 185, 129, 0.12);
     border: 1px solid rgba(16, 185, 129, 0.3);
     color: #34d399;
   }
 
   .btn-netdata:hover {
-    background: rgba(16, 185, 129, 0.25);
+    background: #10b981;
     color: #ffffff;
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+    transform: translateY(-1px);
   }
 
   /* VNC Instructions Box */
   .vnc-instructions-box {
     background: var(--surface-muted, #18181b);
     border: 1px solid var(--card-border, #222225);
-    border-radius: 8px;
-    padding: 0.75rem;
+    border-radius: 10px;
+    padding: 0.85rem;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.55rem;
   }
 
   .cmd-label {
     font-size: 0.725rem;
     color: var(--text-muted, #a1a1aa);
-    font-weight: 500;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
   }
 
   .cmd-row {
@@ -780,8 +808,8 @@
     justify-content: space-between;
     background: var(--bg-dark, #000000);
     border: 1px solid var(--card-border, #222225);
-    border-radius: 6px;
-    padding: 0.4rem 0.6rem;
+    border-radius: 8px;
+    padding: 0.45rem 0.65rem;
     gap: 0.5rem;
     min-width: 0;
   }
@@ -803,9 +831,9 @@
     background: var(--surface-muted, #18181b);
     border: 1px solid var(--card-border, #222225);
     color: var(--text-main, #f4f4f5);
-    padding: 0.3rem 0.55rem;
-    border-radius: 4px;
-    font-size: 0.7rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.725rem;
     font-weight: 600;
     cursor: pointer;
     flex-shrink: 0;
@@ -832,37 +860,65 @@
   /* 3. Docker Summary Section */
   .docker-summary-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
     gap: 1rem;
   }
 
   .docker-count-card {
+    position: relative;
     background: var(--card-bg, #121214);
     border: 1px solid var(--card-border, #222225);
-    border-radius: 12px;
-    padding: 1rem;
+    border-radius: 14px;
+    padding: 1.15rem 1rem;
     display: flex;
-    align-items: center;
-    gap: 1rem;
+    flex-direction: column;
     cursor: pointer;
     text-align: left;
     width: 100%;
-    transition: transform 0.2s ease, border-color 0.2s ease;
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), 
+                border-color 0.22s ease, 
+                box-shadow 0.22s ease;
     box-sizing: border-box;
+    overflow: hidden;
   }
 
   .docker-count-card:hover {
-    transform: translateY(-2px);
-    border-color: rgba(56, 189, 248, 0.3);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+  }
+
+  .card-running:hover { border-color: rgba(34, 197, 94, 0.4); }
+  .card-paused:hover { border-color: rgba(234, 179, 8, 0.4); }
+  .card-stopped:hover { border-color: rgba(148, 163, 184, 0.4); }
+  .card-total:hover { border-color: rgba(56, 189, 248, 0.4); }
+
+  .card-accent {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+  }
+
+  .accent-running { background: linear-gradient(90deg, #10b981, #22c55e); }
+  .accent-paused { background: linear-gradient(90deg, #f59e0b, #eab308); }
+  .accent-stopped { background: linear-gradient(90deg, #64748b, #94a3b8); }
+  .accent-total { background: linear-gradient(90deg, #0284c7, #38bdf8); }
+
+  .count-card-inner {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
   }
 
   .count-icon-box {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
     flex-shrink: 0;
   }
 
@@ -873,15 +929,17 @@
   }
 
   .count-value {
-    font-size: 1.35rem;
+    font-size: 1.5rem;
     font-weight: 800;
     line-height: 1.1;
+    letter-spacing: -0.02em;
   }
 
   .count-title {
     font-size: 0.775rem;
     color: var(--text-muted, #a1a1aa);
-    font-weight: 500;
+    font-weight: 600;
+    margin-top: 2px;
   }
 
   /* Colores de tarjetas resumen */
@@ -980,36 +1038,42 @@
   }
 
   .container-quick-tile {
+    position: relative;
     background: var(--surface-muted, #18181b);
     border: 1px solid var(--card-border, #222225);
-    border-radius: 10px;
-    padding: 0.85rem;
+    border-radius: 12px;
+    padding: 0.95rem 1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: 0.65rem;
     cursor: pointer;
     text-align: left;
     width: 100%;
-    transition: all 0.2s ease;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), 
+                border-color 0.2s ease, 
+                box-shadow 0.2s ease, 
+                background 0.2s ease;
     box-sizing: border-box;
+    overflow: hidden;
   }
 
   .container-quick-tile:hover {
     background: var(--card-border, #222225);
-    border-color: rgba(56, 189, 248, 0.3);
+    border-color: rgba(56, 189, 248, 0.35);
     transform: translateY(-2px);
+    box-shadow: 0 6px 18px -3px rgba(0, 0, 0, 0.4);
   }
 
   .tile-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: 0.65rem;
   }
 
   .tile-name {
     font-weight: 700;
-    font-size: 0.85rem;
+    font-size: 0.875rem;
     color: var(--text-main, #f4f4f5);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1021,7 +1085,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 0.725rem;
+    font-size: 0.75rem;
     gap: 0.5rem;
   }
 
@@ -1030,10 +1094,16 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 70%;
+    color: var(--text-muted, #a1a1aa);
   }
 
   .tile-id {
     color: var(--text-muted, #a1a1aa);
+    background: var(--bg-dark, #000000);
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    border: 1px solid var(--card-border, #222225);
     flex-shrink: 0;
   }
 

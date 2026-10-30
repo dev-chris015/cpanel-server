@@ -21,16 +21,29 @@
       : 'normal';
 </script>
 
-<div class="metric-card">
-  <div class="card-header">
+<div class="metric-card level-{statusLevel}">
+  <div class="card-glow"></div>
+  
+  <div class="card-top">
     <div class="header-left">
       {#if icon}
         <div class="icon-box level-{statusLevel}">
           <svelte:component this={icon} size={18} />
         </div>
       {/if}
-      <span class="card-title">{title}</span>
+      <div class="title-wrap">
+        <span class="card-title" title={title}>{title}</span>
+        {#if subtitle}
+          <span class="card-subtitle" title={subtitle}>{subtitle}</span>
+        {/if}
+      </div>
     </div>
+    <div class="percent-badge level-{statusLevel} font-mono">
+      {numericPercent.toFixed(1)}%
+    </div>
+  </div>
+
+  <div class="card-main">
     <div class="card-value font-mono">
       {value}
     </div>
@@ -42,37 +55,68 @@
       style="width: {numericPercent}%"
     ></div>
   </div>
-
-  {#if subtitle}
-    <div class="card-footer">
-      <span class="subtitle-text">{subtitle}</span>
-      <span class="percent-tag level-{statusLevel} font-mono">{numericPercent.toFixed(1)}%</span>
-    </div>
-  {/if}
 </div>
 
 <style>
   .metric-card {
+    position: relative;
     background: var(--card-bg, #121214);
     border: 1px solid var(--card-border, #222225);
-    border-radius: 12px;
-    padding: 1.15rem 1.25rem;
+    border-radius: 14px;
+    padding: 1.25rem;
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
-    box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.4);
-    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    gap: 0.95rem;
+    box-shadow: 0 4px 18px -4px rgba(0, 0, 0, 0.4);
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), 
+                border-color 0.22s ease, 
+                box-shadow 0.22s ease;
+    overflow: hidden;
+    box-sizing: border-box;
   }
 
   .metric-card:hover {
-    border-color: rgba(56, 189, 248, 0.3);
-    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 28px -6px rgba(0, 0, 0, 0.55);
   }
 
-  .card-header {
+  .metric-card.level-normal:hover {
+    border-color: rgba(34, 197, 94, 0.35);
+  }
+
+  .metric-card.level-warning:hover {
+    border-color: rgba(245, 158, 11, 0.4);
+  }
+
+  .metric-card.level-danger:hover {
+    border-color: rgba(239, 68, 68, 0.45);
+  }
+
+  .card-glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    opacity: 0.85;
+    transition: opacity 0.3s;
+  }
+
+  .level-normal .card-glow {
+    background: linear-gradient(90deg, transparent, #22c55e, transparent);
+  }
+
+  .level-warning .card-glow {
+    background: linear-gradient(90deg, transparent, #f59e0b, transparent);
+  }
+
+  .level-danger .card-glow {
+    background: linear-gradient(90deg, transparent, #ef4444, transparent);
+  }
+
+  .card-top {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 0.75rem;
   }
@@ -80,50 +124,107 @@
   .header-left {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
+    gap: 0.75rem;
     min-width: 0;
+    flex: 1;
+  }
+
+  .title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    flex: 1;
   }
 
   .icon-box {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
     flex-shrink: 0;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition: all 0.25s ease;
   }
 
   .icon-box.level-normal {
     background: rgba(34, 197, 94, 0.12);
     color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.25);
   }
 
   .icon-box.level-warning {
     background: rgba(245, 158, 11, 0.15);
     color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.25);
   }
 
   .icon-box.level-danger {
     background: rgba(239, 68, 68, 0.15);
     color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.25);
   }
 
   .card-title {
     font-size: 0.875rem;
-    font-weight: 600;
+    font-weight: 700;
+    color: var(--text-main, #f4f4f5);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.01em;
+  }
+
+  .card-subtitle {
+    font-size: 0.75rem;
     color: var(--text-muted, #a1a1aa);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .card-value {
-    font-size: 1.05rem;
+  .percent-badge {
+    padding: 0.2rem 0.55rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
     font-weight: 700;
-    color: var(--text-main, #f4f4f5);
     white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .percent-badge.level-normal {
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+  }
+
+  .percent-badge.level-warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.25);
+  }
+
+  .percent-badge.level-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+  }
+
+  .card-main {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  .card-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-main, #f4f4f5);
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .font-mono {
@@ -133,7 +234,7 @@
   /* Barra de progreso */
   .progress-track {
     width: 100%;
-    height: 8px;
+    height: 7px;
     background: var(--surface-muted, #18181b);
     border-radius: 9999px;
     overflow: hidden;
@@ -147,66 +248,34 @@
     transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease;
   }
 
-  /* Colores reactivos: verde < 70%, naranja 70-85%, rojo > 85% */
   .progress-fill.level-normal {
     background: linear-gradient(90deg, #10b981, #22c55e);
-    box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.45);
   }
 
   .progress-fill.level-warning {
     background: linear-gradient(90deg, #f59e0b, #eab308);
-    box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
   }
 
   .progress-fill.level-danger {
     background: linear-gradient(90deg, #ef4444, #f43f5e);
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
-  }
-
-  .card-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 0.775rem;
-    color: var(--text-muted, #a1a1aa);
-    gap: 0.5rem;
-  }
-
-  .subtitle-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .percent-tag {
-    font-weight: 600;
-    font-size: 0.75rem;
-  }
-
-  .percent-tag.level-normal {
-    color: #4ade80;
-  }
-
-  .percent-tag.level-warning {
-    color: #fbbf24;
-  }
-
-  .percent-tag.level-danger {
-    color: #f87171;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.55);
   }
 
   @media (max-width: 480px) {
     .metric-card {
-      padding: 0.95rem 1rem;
-      gap: 0.65rem;
+      padding: 1rem;
+      gap: 0.8rem;
     }
 
     .card-value {
-      font-size: 0.95rem;
+      font-size: 1.1rem;
     }
 
-    .card-title {
-      font-size: 0.8rem;
+    .icon-box {
+      width: 32px;
+      height: 32px;
     }
   }
 </style>
