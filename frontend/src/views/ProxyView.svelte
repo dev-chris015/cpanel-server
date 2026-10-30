@@ -19,6 +19,7 @@
     Lock
   } from 'lucide-svelte';
   import { api } from '../lib/api.js';
+  import SslManagementModal from '../lib/components/SslManagementModal.svelte';
 
   export let containers = [];
 
@@ -30,6 +31,22 @@
   let certActionLoading = {};
   let rollbackNotice = null;
   let successNotice = null;
+
+  // Estado para modal de SSL Let's Encrypt
+  let showSslModal = false;
+  let selectedVHostForSsl = null;
+
+  function handleOpenSslModal(vhostItem) {
+    selectedVHostForSsl = vhostItem;
+    showSslModal = true;
+  }
+
+  async function handleSslSuccess(event) {
+    await fetchVHosts();
+    const issuedDomain = event.detail?.domain || '';
+    successNotice = event.detail?.result?.message || `Certificado SSL aplicado con éxito para ${issuedDomain}.`;
+    setTimeout(() => successNotice = null, 5000);
+  }
 
   // Formulario de Alta / Edición
   let domain = '';
@@ -593,14 +610,11 @@
                     <button 
                       type="button" 
                       class="btn-cert" 
-                      on:click={() => handleIssueCert(vh)}
-                      disabled={certActionLoading[vh.domain] || actionLoading}
-                      title="Verificar y emitir o renovar certificado Let's Encrypt / SSL con recarga en nginx-proxy"
+                      on:click={() => handleOpenSslModal(vh)}
+                      disabled={actionLoading}
+                      title="Abrir panel de gestión y emisión SSL Let's Encrypt"
                     >
-                      {#if certActionLoading[vh.domain]}
-                        <RefreshCw size={13} class="spin" />
-                        <span>Emitiendo...</span>
-                      {:else if vh.hasCertOnDisk || vh.hasSsl}
+                      {#if vh.hasCertOnDisk || vh.hasSsl}
                         <ShieldCheck size={13} class="text-green" />
                         <span>Gestionar SSL</span>
                       {:else}
@@ -629,6 +643,14 @@
     {/if}
   </div>
 </div>
+
+<!-- Modal Interactivo para Gestión y Emisión de Certificados SSL Let's Encrypt -->
+<SslManagementModal 
+  show={showSslModal}
+  vhost={selectedVHostForSsl}
+  on:close={() => { showSslModal = false; selectedVHostForSsl = null; }}
+  on:success={handleSslSuccess}
+/>
 
 <style>
   .proxy-view-container {
