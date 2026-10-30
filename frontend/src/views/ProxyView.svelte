@@ -15,7 +15,8 @@
     Info, 
     X,
     Cpu,
-    Radio
+    Radio,
+    Lock
   } from 'lucide-svelte';
   import { api } from '../lib/api.js';
 
@@ -26,6 +27,7 @@
   let error = null;
   let actionLoading = false;
   let reloadLoading = false;
+  let certActionLoading = {};
   let rollbackNotice = null;
   let successNotice = null;
 
@@ -198,6 +200,50 @@
       };
     } finally {
       actionLoading = false;
+    }
+  }
+
+  async function handleIssueCert(vhostItem) {
+    const itemDomain = vhostItem.domain;
+    if (!itemDomain) return;
+
+    const confirmMsg = vhostItem.hasCertOnDisk
+      ? `Ya existe un certificado para '${itemDomain}'. ¿Deseas aplicar la configuración HTTPS y recargar Nginx?`
+      : `¿Deseas gestionar y emitir un certificado SSL para '${itemDomain}'? Se configurará ACME en puerto 80, se ejecutará Certbot y se aplicará HTTPS con recarga en nginx-proxy.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    certActionLoading = { ...certActionLoading, [itemDomain]: true };
+    rollbackNotice = null;
+    successNotice = null;
+
+    try {
+      const res = await api.post(`/proxy/vhosts/${itemDomain}/issue-cert`, {
+        target: vhostItem.target || undefined
+      });
+
+      if (res && res.success) {
+        successNotice = res.message || `Certificado SSL aplicado con éxito para ${itemDomain}.`;
+        await fetchVHosts();
+        setTimeout(() => successNotice = null, 5000);
+      } else {
+        rollbackNotice = {
+          title: `Fallo al emitir / gestionar certificado para ${itemDomain}`,
+          domain: itemDomain,
+          error: res?.error || 'No se pudo emitir el certificado.',
+          details: res?.details || res?.certbotOutput || ''
+        };
+      }
+    } catch (err) {
+      const resData = err?.response?.data;
+      rollbackNotice = {
+        title: `Error en emisión SSL para ${itemDomain}`,
+        domain: itemDomain,
+        error: resData?.error || err.message,
+        details: resData?.details || resData?.certbotOutput || 'Verifica que el dominio apunte a este servidor.'
+      };
+    } finally {
+      certActionLoading = { ...certActionLoading, [itemDomain]: false };
     }
   }
 
@@ -543,16 +589,37 @@
 
                 <!-- Acciones -->
                 <td class="col-actions text-right">
-                  <button 
-                    type="button" 
-                    class="btn-delete" 
-                    on:click={() => handleDeleteVHost(vh.domain)}
-                    disabled={actionLoading}
-                    title="Eliminar Virtual Host"
-                  >
-                    <Trash2 size={14} />
-                    <span>Eliminar</span>
-                  </button>
+                  <div class="actions-group">
+                    <button 
+                      type="button" 
+                      class="btn-cert" 
+                      on:click={() => handleIssueCert(vh)}
+                      disabled={certActionLoading[vh.domain] || actionLoading}
+                      title="Verificar y emitir o renovar certificado Let's Encrypt / SSL con recarga en nginx-proxy"
+                    >
+                      {#if certActionLoading[vh.domain]}
+                        <RefreshCw size={13} class="spin" />
+                        <span>Emitiendo...</span>
+                      {:else if vh.hasCertOnDisk || vh.hasSsl}
+                        <ShieldCheck size={13} class="text-green" />
+                        <span>Gestionar SSL</span>
+                      {:else}
+                        <Lock size={13} />
+                        <span>Emitir Certificado</span>
+                      {/if}
+                    </button>
+
+                    <button 
+                      type="button" 
+                      class="btn-delete" 
+                      on:click={() => handleDeleteVHost(vh.domain)}
+                      disabled={actionLoading || certActionLoading[vh.domain]}
+                      title="Eliminar Virtual Host"
+                    >
+                      <Trash2 size={14} />
+                      <span>Eliminar</span>
+                    </button>
+                  </div>
                 </td>
               </tr>
             {/each}
@@ -1088,6 +1155,39 @@
     background: rgba(234, 179, 8, 0.12);
     color: #fde047;
     border: 1px solid rgba(234, 179, 8, 0.3);
+  }
+
+  .actions-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: flex-end;
+  }
+
+  .btn-cert {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(14, 165, 233, 0.12);
+    border: 1px solid rgba(14, 165, 233, 0.3);
+    color: #38bdf8;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-cert:hover:not(:disabled) {
+    background: rgba(14, 165, 233, 0.25);
+    color: #ffffff;
+    border-color: rgba(14, 165, 233, 0.5);
+  }
+
+  .btn-cert:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .btn-delete {

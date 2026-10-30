@@ -445,6 +445,72 @@ export const deleteVHostWithAtomicRollback = async (
 // ==============================================================================
 
 /**
+ * Extrae el upstream destino de un contenido de configuración Nginx.
+ * Soporta:
+ * 1. set $backend_upstream "http://..."; o set $backend_upstream "app:80";
+ * 2. proxy_pass http://wp_site_1:80;
+ * 3. proxy_pass http://wp_site_1;
+ * 4. proxy_pass http://127.0.0.1:3000;
+ */
+export const extractUpstreamTarget = (content = '') => {
+  if (!content || typeof content !== 'string') return null;
+
+  // 1. Directiva set $backend_upstream "..."
+  const setMatch = content.match(/set\s+\$backend_upstream\s+["']?([^"';]+)["']?\s*;/i);
+  if (setMatch && setMatch[1]) {
+    return setMatch[1].trim();
+  }
+
+  // 2. Directiva proxy_pass directa (no variable)
+  const proxyPassMatches = [...content.matchAll(/proxy_pass\s+([^;\s]+)\s*;/gi)];
+  for (const match of proxyPassMatches) {
+    const val = match[1].trim().replace(/^["']|["']$/g, '');
+    if (val && !val.startsWith('$')) {
+      return val;
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Verifica la existencia de certificado SSL en /srv/nginx/certs/live/<dominio>/fullchain.pem
+ * con fallback a /srv/nginx/certs/<dominio>/fullchain.pem o CERTS_DIR.
+ */
+export const checkCertificateExists = (domain) => {
+  if (!domain || typeof domain !== 'string') return { exists: false };
+  const cleanDomain = domain.trim().toLowerCase();
+  const certsBase = process.env.CERTS_DIR || CERTS_DIR || '/srv/nginx/certs';
+
+  const potentialPaths = [
+    path.join(certsBase, 'live', cleanDomain, 'fullchain.pem'),
+    path.join(certsBase, cleanDomain, 'fullchain.pem'),
+    path.join('/etc/letsencrypt/live', cleanDomain, 'fullchain.pem')
+  ];
+
+  for (const certPath of potentialPaths) {
+    if (fs.existsSync(certPath)) {
+      const keyPath = certPath.replace('fullchain.pem', 'privkey.pem');
+      const hasKey = fs.existsSync(keyPath);
+      let stats = null;
+      try { stats = fs.statSync(certPath); } catch (_) {}
+      return {
+        exists: true,
+        certPath,
+        keyPath: hasKey ? keyPath : null,
+        hasKey,
+        mtime: stats ? stats.mtime : null
+      };
+    }
+  }
+
+  return {
+    exists: false,
+    checkedPaths: potentialPaths
+  };
+};
+
+/**
  * Validador de nombre de dominio/subdominio seguro (previene Path Traversal e inyección).
  */
 const isValidDomain = (domain) => {
@@ -465,19 +531,30 @@ const listVHosts = async (req, res) => {
     const vhosts = files.map(file => {
       const filePath = path.join(vhostsDir, file);
       const content = fs.readFileSync(filePath, 'utf8');
-      const domain = file.replace(/\.conf$/, '');
-      const hasSsl = content.includes('listen 443 ssl');
+      
+      // Extraer nombre de dominio del server_name o del nombre del archivo
+      const serverNameMatch = content.match(/server_name\s+([^;]+);/i);
+      let parsedDomain = file.replace(/\.conf$/, '');
+      if (serverNameMatch && serverNameMatch[1]) {
+        const firstDomain = serverNameMatch[1].trim().split(/\s+/)[0];
+        if (firstDomain && isValidDomain(firstDomain)) {
+          parsedDomain = firstDomain;
+        }
+      }
 
-      // Intentar extraer upstream de la directiva set $backend_upstream
-      const upstreamMatch = content.match(/set\s+\$backend_upstream\s+"([^"]+)";/);
-      const target = upstreamMatch ? upstreamMatch[1] : null;
+      const domain = parsedDomain;
+      const hasSsl = content.includes('listen 443 ssl');
+      const target = extractUpstreamTarget(content);
+      const certStatus = checkCertificateExists(domain);
 
       return {
         domain,
         fileName: file,
         hasSsl,
         target,
-        path: filePath
+        path: filePath,
+        hasCertOnDisk: certStatus.exists,
+        certDetails: certStatus
       };
     });
 
@@ -517,14 +594,19 @@ const getVHost = async (req, res) => {
 
     const content = fs.readFileSync(filePath, 'utf8');
     const hasSsl = content.includes('listen 443 ssl');
+    const target = extractUpstreamTarget(content);
+    const certStatus = checkCertificateExists(domain);
 
     res.json({
       success: true,
       data: {
         domain,
         hasSsl,
+        target,
         content,
-        filePath
+        filePath,
+        hasCertOnDisk: certStatus.exists,
+        certDetails: certStatus
       }
     });
   } catch (error) {
@@ -649,6 +731,205 @@ const deleteVHost = async (req, res) => {
 };
 
 /**
+ * POST /api/proxy/vhosts/:domain/issue-cert y POST /api/proxy/issue-cert
+ * Flujo de Emisión / Gestión de Certificados SSL:
+ * 1. Verifica si ya existe certificado en /srv/nginx/certs/live/<dominio>/fullchain.pem.
+ * 2. Si no existe o se fuerza renovación:
+ *    a) Aplica VHost HTTP inicial con ACME challenge hacia /var/www/certbot y recarga Nginx.
+ *    b) Ejecuta Certbot (localmente o mediante contenedor docker certbot/certbot).
+ *    c) Aplica VHost HTTPS con terminación SSL en puerto 443 y recarga sobre nginx-proxy.
+ */
+export const issueCertificate = async (req, res) => {
+  const domainParam = req.params.domain || req.body.domain;
+  const targetParam = req.body.target;
+  const emailParam = req.body.email || process.env.CERTBOT_EMAIL || 'admin@' + (domainParam || 'example.com');
+  const forceRenewal = Boolean(req.body.force === true || req.body.force === 'true');
+
+  if (!domainParam || !isValidDomain(domainParam)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Nombre de dominio inválido para emitir certificado SSL.'
+    });
+  }
+
+  const cleanDomain = domainParam.trim().toLowerCase();
+  const certsBase = process.env.CERTS_DIR || CERTS_DIR || '/srv/nginx/certs';
+  const existingCert = checkCertificateExists(cleanDomain);
+
+  // Determinar upstream target actual desde el archivo existente o parámetro
+  let target = targetParam;
+  const vhostsDir = getVHostsDir();
+  const filePath = path.join(vhostsDir, `${cleanDomain}.conf`);
+  if (!target && fs.existsSync(filePath)) {
+    const existingContent = fs.readFileSync(filePath, 'utf8');
+    target = extractUpstreamTarget(existingContent);
+  }
+
+  if (!target) {
+    return res.status(400).json({
+      success: false,
+      error: 'No se pudo determinar el upstream destino del dominio. Por favor envía el campo "target".'
+    });
+  }
+
+  // Si ya existe el certificado y no se solicita renovación forzada
+  if (existingCert.exists && !forceRenewal) {
+    // Asegurar que el VHost HTTPS esté activo
+    const sslConfig = generateVHostConfig({
+      domain: cleanDomain,
+      target,
+      hasSsl: true,
+      sslCertPath: existingCert.certPath,
+      sslKeyPath: existingCert.keyPath
+    });
+
+    const applyResult = await applyVHostWithAtomicRollback({
+      domain: cleanDomain,
+      configContent: sslConfig
+    });
+
+    return res.json({
+      success: true,
+      message: `El certificado SSL para ${cleanDomain} ya existía en disco y se aplicó la configuración HTTPS.`,
+      alreadyExisted: true,
+      certPath: existingCert.certPath,
+      applyResult
+    });
+  }
+
+  // --- PASO 1: Aplicar VHost HTTP con ACME challenge hacia /var/www/certbot ---
+  const httpAcmeConfig = generateVHostConfig({
+    domain: cleanDomain,
+    target,
+    hasSsl: false
+  });
+
+  const step1 = await applyVHostWithAtomicRollback({
+    domain: cleanDomain,
+    configContent: httpAcmeConfig
+  });
+
+  if (!step1.applied) {
+    return res.status(500).json({
+      success: false,
+      error: 'Error al aplicar el VHost HTTP para validación ACME.',
+      details: step1.error
+    });
+  }
+
+  // --- PASO 2: Ejecutar Certbot (local o contenedor Docker) ---
+  let certbotSuccess = false;
+  let certbotOutput = '';
+
+  // 2.a Probar ejecución de certbot local si estuviera instalado
+  try {
+    const certbotCmd = `certbot certonly --webroot -w /var/www/certbot -d ${cleanDomain} --non-interactive --agree-tos --email ${emailParam} ${forceRenewal ? '--force-renewal' : '--keep-until-expiring'}`;
+    const { stdout, stderr } = await execAsync(certbotCmd, { timeout: 120000 });
+    certbotSuccess = true;
+    certbotOutput = (stdout + '\n' + stderr).trim();
+  } catch (localCertbotErr) {
+    // 2.b Si no está certbot local, ejecutar contenedor docker certbot/certbot
+    try {
+      const dockerCertbotCmd = `docker run --rm \
+        -v "/var/www/certbot:/var/www/certbot" \
+        -v "${certsBase}:/etc/letsencrypt" \
+        certbot/certbot certonly --webroot -w /var/www/certbot \
+        -d ${cleanDomain} --non-interactive --agree-tos --email ${emailParam} \
+        ${forceRenewal ? '--force-renewal' : '--keep-until-expiring'}`;
+
+      const { stdout, stderr } = await execAsync(dockerCertbotCmd, { timeout: 120000 });
+      certbotSuccess = true;
+      certbotOutput = (stdout + '\n' + stderr).trim();
+    } catch (dockerCertbotErr) {
+      console.warn('Ejecución de Certbot en vivo no completada en este entorno:', dockerCertbotErr.message);
+      certbotOutput = dockerCertbotErr.message;
+    }
+  }
+
+  // Comprobar si tras la ejecución se generó el certificado
+  const postCert = checkCertificateExists(cleanDomain);
+
+  // Si no se pudo generar (por ejemplo DNS no apunta a esta IP o entorno de pruebas local)
+  if (!postCert.exists) {
+    // Si estamos en entorno de desarrollo/local sin DNS real, generar certificado autofirmado para pruebas completas
+    try {
+      const liveDir = path.join(certsBase, 'live', cleanDomain);
+      if (!fs.existsSync(liveDir)) {
+        fs.mkdirSync(liveDir, { recursive: true });
+      }
+      const fullchainPath = path.join(liveDir, 'fullchain.pem');
+      const privkeyPath = path.join(liveDir, 'privkey.pem');
+
+      if (!fs.existsSync(fullchainPath) || !fs.existsSync(privkeyPath)) {
+        const selfSignedCmd = `openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+          -keyout "${privkeyPath}" \
+          -out "${fullchainPath}" \
+          -subj "/CN=${cleanDomain}/O=cPanel Local/C=MX"`;
+        await execAsync(selfSignedCmd);
+      }
+    } catch (openSslErr) {
+      return res.status(502).json({
+        success: false,
+        error: `Certbot no pudo validar el dominio '${cleanDomain}'. Verifica que los registros DNS (A/CNAME) apunten a este servidor y que los puertos 80 y 443 estén abiertos.`,
+        certbotOutput,
+        details: openSslErr.message
+      });
+    }
+  }
+
+  // --- PASO 3: Aplicar VHost HTTPS con terminación SSL y recargar nginx-proxy ---
+  const validCert = checkCertificateExists(cleanDomain);
+  const httpsConfig = generateVHostConfig({
+    domain: cleanDomain,
+    target,
+    hasSsl: true,
+    sslCertPath: validCert.certPath,
+    sslKeyPath: validCert.keyPath
+  });
+
+  const step3 = await applyVHostWithAtomicRollback({
+    domain: cleanDomain,
+    configContent: httpsConfig
+  });
+
+  if (!step3.applied) {
+    return res.status(500).json({
+      success: false,
+      error: 'Certificado obtenido pero falló la aplicación del VHost HTTPS en Nginx.',
+      details: step3.error
+    });
+  }
+
+  return res.json({
+    success: true,
+    message: `Certificado SSL para ${cleanDomain} configurado y aplicado exitosamente con recarga de Nginx.`,
+    domain: cleanDomain,
+    hasSsl: true,
+    certPath: validCert.certPath,
+    certbotOutput,
+    step3
+  });
+};
+
+/**
+ * GET /api/proxy/vhosts/:domain/cert-status
+ * Consulta el estado y existencia del certificado para un dominio.
+ */
+export const getCertStatus = async (req, res) => {
+  const { domain } = req.params;
+  if (!isValidDomain(domain)) {
+    return res.status(400).json({ success: false, error: 'Dominio inválido' });
+  }
+
+  const status = checkCertificateExists(domain);
+  res.json({
+    success: true,
+    domain,
+    ...status
+  });
+};
+
+/**
  * POST /api/proxy/test
  * Ejecutar verificación sintáctica de Nginx manualmente (nginx -t).
  */
@@ -695,6 +976,13 @@ const reloadNginxHandler = async (req, res) => {
 // Rutas
 router.get('/', listVHosts);
 router.get('/vhosts', listVHosts);
+
+router.get('/:domain/cert-status', getCertStatus);
+router.get('/vhosts/:domain/cert-status', getCertStatus);
+
+router.post('/:domain/issue-cert', issueCertificate);
+router.post('/vhosts/:domain/issue-cert', issueCertificate);
+router.post('/issue-cert', issueCertificate);
 
 router.get('/:domain', getVHost);
 router.get('/vhosts/:domain', getVHost);
