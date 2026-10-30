@@ -20,6 +20,7 @@
   } from 'lucide-svelte';
   import { api } from '../lib/api.js';
   import SslManagementModal from '../lib/components/SslManagementModal.svelte';
+  import DeleteVHostModal from '../lib/components/DeleteVHostModal.svelte';
 
   export let containers = [];
 
@@ -32,13 +33,16 @@
   let rollbackNotice = null;
   let successNotice = null;
 
-  // Estado para modal de SSL Let's Encrypt
-  let showSslModal = false;
-  let selectedVHostForSsl = null;
+  // Estado para modales de SSL y Eliminación
+  let activeSslVHost = null;
+  let activeDeleteVHost = null;
 
   function handleOpenSslModal(vhostItem) {
-    selectedVHostForSsl = vhostItem;
-    showSslModal = true;
+    activeSslVHost = vhostItem;
+  }
+
+  function handleOpenDeleteModal(vhostItem) {
+    activeDeleteVHost = vhostItem;
   }
 
   async function handleSslSuccess(event) {
@@ -46,6 +50,13 @@
     const issuedDomain = event.detail?.domain || '';
     successNotice = event.detail?.result?.message || `Certificado SSL aplicado con éxito para ${issuedDomain}.`;
     setTimeout(() => successNotice = null, 5000);
+  }
+
+  async function handleDeleteSuccess(event) {
+    await fetchVHosts();
+    const deletedDomain = event.detail?.domain || '';
+    successNotice = event.detail?.result?.message || `Virtual Host ${deletedDomain} eliminado correctamente.`;
+    setTimeout(() => successNotice = null, 4000);
   }
 
   // Formulario de Alta / Edición
@@ -61,6 +72,91 @@
     const s = (c.State || c.state || '').toLowerCase();
     return s === 'running';
   });
+
+  // Extraer host de un target upstream (ej. "app:80" -> "app")
+  function extractHostFromTarget(targetStr) {
+    if (!targetStr || typeof targetStr !== 'string') return '';
+    const clean = targetStr.trim().replace(/^https?:\/\//, '');
+    const host = clean.split(':')[0];
+    return host.toLowerCase();
+  }
+
+  // Cálculo Reactivo de Contenedores Asignados en caliente
+  $: assignedContainerMap = (() => {
+    const map = new Map();
+    vhosts.forEach(vh => {
+      if (vh.target) {
+        const host = extractHostFromTarget(vh.target);
+        if (host) {
+          map.set(host, vh);
+        }
+      }
+    });
+    return map;
+  })();
+
+  // Filtrado en menú desplegable de contenedores disponibles (sin dominio asignado)
+  $: availableContainers = runningContainers.filter(c => {
+    const cName = (c.name || c.Names?.[0] || '').replace(/^\//, '') || c.Id?.slice(0, 12);
+    return !assignedContainerMap.has(cName.toLowerCase()) && !assignedContainerMap.has(cName);
+  });
+
+  // Conteo de contenedores asignados que se ocultan en la lista
+  $: assignedCount = runningContainers.length - availableContainers.length;
+
+  // Contenedor seleccionado actualmente
+  $: selectedContainerData = runningContainers.find(c => {
+    const name = (c.name || c.Names?.[0] || '').replace(/^\//, '');
+    return name === selectedContainer || c.Id?.startsWith(selectedContainer);
+  });
+
+  // Puertos detectados en el contenedor seleccionado
+  $: detectedPorts = (() => {
+    if (!selectedContainerData || !Array.isArray(selectedContainerData.Ports)) return [];
+    const list = [];
+    const seen = new Set();
+    selectedContainerData.Ports.forEach(p => {
+      const portVal = p.PrivatePort || p.PublicPort;
+      if (portVal && !seen.has(portVal)) {
+        seen.add(portVal);
+        list.push({
+          port: portVal,
+          type: p.Type || 'tcp',
+          publicPort: p.PublicPort
+        });
+      }
+    });
+    return list;
+  })();
+
+  // Validación de disponibilidad de puertos (detecta colisión con otro contenedor)
+  $: portConflict = (() => {
+    if (useManualTarget) return null;
+    const pStr = containerPort ? String(containerPort).trim() : '';
+    if (!pStr) return null;
+    const portNum = parseInt(pStr, 10);
+    if (!portNum || isNaN(portNum)) return null;
+
+    for (const c of runningContainers) {
+      const cName = (c.name || c.Names?.[0] || '').replace(/^\//, '') || c.Id?.slice(0, 12);
+      // Ignorar el contenedor seleccionado que se está configurando
+      if (selectedContainer && (cName === selectedContainer || c.Id?.startsWith(selectedContainer))) {
+        continue;
+      }
+
+      if (Array.isArray(c.Ports)) {
+        for (const p of c.Ports) {
+          if (p.PublicPort === portNum || p.PrivatePort === portNum) {
+            return {
+              port: pStr,
+              ownerContainer: cName
+            };
+          }
+        }
+      }
+    }
+    return null;
+  })();
 
   // Target calculado automáticamente según contenedor seleccionado o manual
   $: targetComputed = useManualTarget 
@@ -183,91 +279,10 @@
     }
   }
 
-  async function handleDeleteVHost(itemDomain) {
-    if (!confirm(`¿Estás seguro de eliminar el Virtual Host para '${itemDomain}'? Nginx realizará verificación sintáctica y rollback si algo falla.`)) {
-      return;
-    }
-
-    rollbackNotice = null;
-    successNotice = null;
-    actionLoading = true;
-
-    try {
-      const res = await api.delete(`/proxy/vhosts/${itemDomain}`);
-      if (res && res.success) {
-        successNotice = `Virtual Host ${itemDomain} eliminado correctamente.`;
-        await fetchVHosts();
-        setTimeout(() => successNotice = null, 4000);
-      } else {
-        rollbackNotice = {
-          title: 'No se pudo eliminar el Virtual Host',
-          domain: itemDomain,
-          error: res?.error || 'Error al eliminar configuración.',
-          details: res?.details || '',
-          rollbackVerified: res?.rollbackVerified ?? true
-        };
-      }
-    } catch (err) {
-      rollbackNotice = {
-        title: 'Error al eliminar',
-        domain: itemDomain,
-        error: err.message,
-        details: 'Rollback verificado. La configuración previa de Nginx se conserva íntegra.',
-        rollbackVerified: true
-      };
-    } finally {
-      actionLoading = false;
-    }
-  }
-
-  async function handleIssueCert(vhostItem) {
-    const itemDomain = vhostItem.domain;
-    if (!itemDomain) return;
-
-    const confirmMsg = vhostItem.hasCertOnDisk
-      ? `Ya existe un certificado para '${itemDomain}'. ¿Deseas aplicar la configuración HTTPS y recargar Nginx?`
-      : `¿Deseas gestionar y emitir un certificado SSL para '${itemDomain}'? Se configurará ACME en puerto 80, se ejecutará Certbot y se aplicará HTTPS con recarga en nginx-proxy.`;
-
-    if (!confirm(confirmMsg)) return;
-
-    certActionLoading = { ...certActionLoading, [itemDomain]: true };
-    rollbackNotice = null;
-    successNotice = null;
-
-    try {
-      const res = await api.post(`/proxy/vhosts/${itemDomain}/issue-cert`, {
-        target: vhostItem.target || undefined
-      });
-
-      if (res && res.success) {
-        successNotice = res.message || `Certificado SSL aplicado con éxito para ${itemDomain}.`;
-        await fetchVHosts();
-        setTimeout(() => successNotice = null, 5000);
-      } else {
-        rollbackNotice = {
-          title: `Fallo al emitir / gestionar certificado para ${itemDomain}`,
-          domain: itemDomain,
-          error: res?.error || 'No se pudo emitir el certificado.',
-          details: res?.details || res?.certbotOutput || ''
-        };
-      }
-    } catch (err) {
-      const resData = err?.response?.data;
-      rollbackNotice = {
-        title: `Error en emisión SSL para ${itemDomain}`,
-        domain: itemDomain,
-        error: resData?.error || err.message,
-        details: resData?.details || resData?.certbotOutput || 'Verifica que el dominio apunte a este servidor.'
-      };
-    } finally {
-      certActionLoading = { ...certActionLoading, [itemDomain]: false };
-    }
-  }
-
   function handleContainerSelect(event) {
     const val = event.target.value;
     selectedContainer = val;
-    // Si el contenedor expone puertos típicos, intentar pre-llenar
+    // Asignar automáticamente puerto por defecto al seleccionar un contenedor
     if (val) {
       const match = runningContainers.find(c => {
         const name = (c.name || c.Names?.[0] || '').replace(/^\//, '');
@@ -275,7 +290,9 @@
       });
       if (match?.Ports && match.Ports.length > 0) {
         const p = match.Ports[0].PrivatePort || match.Ports[0].PublicPort;
-        if (p) containerPort = String(p);
+        containerPort = p ? String(p) : '80';
+      } else {
+        containerPort = '80';
       }
     }
   }
@@ -427,16 +444,27 @@
                 on:change={handleContainerSelect}
                 class="form-select"
                 required
+                disabled={availableContainers.length === 0}
               >
-                <option value="" disabled>Selecciona un contenedor en ejecución...</option>
-                {#each runningContainers as c}
-                  {@const cName = (c.name || c.Names?.[0] || '').replace(/^\//, '') || c.Id?.slice(0, 12)}
-                  <option value={cName}>
-                    {cName} ({c.Image || 'docker'})
-                  </option>
-                {/each}
+                {#if availableContainers.length === 0}
+                  <option value="" disabled selected>No hay contenedores disponibles (todos tienen dominio asignado)</option>
+                {:else}
+                  <option value="" disabled selected>Selecciona un contenedor en ejecución...</option>
+                  {#each availableContainers as c}
+                    {@const cName = (c.name || c.Names?.[0] || '').replace(/^\//, '') || c.Id?.slice(0, 12)}
+                    <option value={cName}>
+                      {cName} ({c.Image || 'docker'})
+                    </option>
+                  {/each}
+                {/if}
               </select>
             </div>
+            {#if assignedCount > 0}
+              <div class="assigned-pill" title="Contenedores filtrados que ya tienen un Virtual Host activo">
+                <Info size={12} />
+                <span>{assignedCount} contenedor(es) con dominio asignado (ocultos)</span>
+              </div>
+            {/if}
             <span class="input-hint">Resuelto dinámicamente mediante DNS interno de Docker.</span>
           {:else}
             <div class="input-wrapper">
@@ -467,9 +495,40 @@
                 bind:value={containerPort}
                 placeholder="80, 3000, 5000..."
                 class="form-input font-mono"
+                class:input-error={Boolean(portConflict)}
                 required
               />
             </div>
+
+            {#if portConflict}
+              <div class="port-conflict-warning">
+                <AlertTriangle size={13} class="conflict-icon" />
+                <span>⚠️ El puerto {containerPort} ya está en uso por el contenedor "{portConflict.ownerContainer}".</span>
+              </div>
+            {/if}
+
+            {#if detectedPorts.length > 0}
+              <div class="detected-ports-container">
+                <span class="detected-ports-label">Puertos detectados:</span>
+                <div class="detected-ports-badges">
+                  {#each detectedPorts as dp}
+                    <button
+                      type="button"
+                      class="badge-port"
+                      class:active={containerPort === String(dp.port)}
+                      on:click={() => containerPort = String(dp.port)}
+                      title="Asignar puerto {dp.port} ({dp.type})"
+                    >
+                      <span>{dp.port}/{dp.type}</span>
+                      {#if dp.publicPort && dp.publicPort !== dp.port}
+                        <span class="host-mapping">({dp.publicPort}:host)</span>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+
             <span class="input-hint">Puerto interno donde escucha el contenedor.</span>
           </div>
         {/if}
@@ -511,7 +570,7 @@
         <button 
           type="submit" 
           class="btn-submit"
-          disabled={actionLoading || !domain || !targetComputed}
+          disabled={actionLoading || !domain || !targetComputed || Boolean(portConflict)}
         >
           {#if actionLoading}
             <RefreshCw size={15} class="spin" />
@@ -626,8 +685,8 @@
                     <button 
                       type="button" 
                       class="btn-delete" 
-                      on:click={() => handleDeleteVHost(vh.domain)}
-                      disabled={actionLoading || certActionLoading[vh.domain]}
+                      on:click={() => handleOpenDeleteModal(vh)}
+                      disabled={actionLoading}
                       title="Eliminar Virtual Host"
                     >
                       <Trash2 size={14} />
@@ -646,10 +705,18 @@
 
 <!-- Modal Interactivo para Gestión y Emisión de Certificados SSL Let's Encrypt -->
 <SslManagementModal 
-  show={showSslModal}
-  vhost={selectedVHostForSsl}
-  on:close={() => { showSslModal = false; selectedVHostForSsl = null; }}
+  show={Boolean(activeSslVHost)}
+  vhost={activeSslVHost}
+  on:close={() => { activeSslVHost = null; }}
   on:success={handleSslSuccess}
+/>
+
+<!-- Modal de Confirmación para Eliminación de Virtual Host con Rollback -->
+<DeleteVHostModal 
+  show={Boolean(activeDeleteVHost)}
+  vhost={activeDeleteVHost}
+  on:close={() => { activeDeleteVHost = null; }}
+  on:success={handleDeleteSuccess}
 />
 
 <style>
@@ -1243,6 +1310,99 @@
     gap: 0.75rem;
     color: #94a3b8;
     font-size: 0.9rem;
+  }
+
+  /* Píldora de Contenedores Asignados */
+  .assigned-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    color: #38bdf8;
+    font-size: 0.72rem;
+    font-weight: 500;
+    margin-top: 5px;
+    width: fit-content;
+  }
+
+  /* Validación de Puerto y Conflicto */
+  .form-input.input-error {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25) !important;
+  }
+
+  .port-conflict-warning {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #f87171;
+    font-size: 0.76rem;
+    font-weight: 500;
+    margin-top: 5px;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+
+  :global(.conflict-icon) {
+    flex-shrink: 0;
+  }
+
+  /* Badges de Puertos Detectados */
+  .detected-ports-container {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .detected-ports-label {
+    font-size: 0.72rem;
+    color: var(--text-muted, #94a3b8);
+  }
+
+  .detected-ports-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .badge-port {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--card-border, #3f3f46);
+    color: var(--text-muted, #cbd5e1);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.73rem;
+    padding: 2px 7px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .badge-port:hover {
+    background: rgba(56, 189, 248, 0.1);
+    border-color: rgba(56, 189, 248, 0.3);
+    color: #38bdf8;
+  }
+
+  .badge-port.active {
+    background: rgba(56, 189, 248, 0.18);
+    border-color: #0284c7;
+    color: #38bdf8;
+    font-weight: 600;
+  }
+
+  .host-mapping {
+    font-size: 0.68rem;
+    opacity: 0.75;
   }
 
   /* Utility classes */
