@@ -197,11 +197,24 @@
     addToast('Sesión cerrada correctamente', 'info');
   }
 
-  async function handleDeploy() {
-    if (!imageName.trim()) {
-      deployMessage = 'Por favor ingresa un nombre de imagen válido.';
-      deployIsError = true;
-      return;
+  async function handleDeploy(customPayload = null) {
+    let payload = null;
+
+    if (customPayload && typeof customPayload === 'object' && customPayload.image) {
+      payload = customPayload;
+    } else {
+      if (!imageName.trim()) {
+        deployMessage = 'Por favor ingresa un nombre de imagen válido.';
+        deployIsError = true;
+        return;
+      }
+
+      payload = {
+        image: imageName.trim(),
+        name: containerName.trim() || undefined,
+        network: 'server-net',
+        ports: hostPort && containerPort ? [{ hostPort: parseInt(hostPort, 10), containerPort: parseInt(containerPort, 10) }] : []
+      };
     }
 
     isDeploying = true;
@@ -209,23 +222,18 @@
     deployIsError = false;
 
     try {
-      const payload = {
-        image: imageName.trim(),
-        name: containerName.trim() || undefined,
-        ports: hostPort && containerPort ? [{ hostPort, containerPort }] : []
-      };
-
       const res = await api.post('/deploy', payload);
 
       if (res && res.success) {
-        deployMessage = `¡Despliegue exitoso! ID: ${(res.data?.id || '').substring(0, 12)}`;
+        const deployedName = payload.name || payload.image;
+        deployMessage = `¡Despliegue exitoso de ${deployedName}! ID: ${(res.data?.id || '').substring(0, 12)}`;
         deployIsError = false;
         imageName = '';
         containerName = '';
         hostPort = '';
         containerPort = '';
         await fetchContainers();
-        addToast('Contenedor desplegado exitosamente', 'success');
+        addToast(payload.type === 'wordpress' ? 'Sitio WordPress creado y desplegado con éxito' : 'Contenedor desplegado exitosamente', 'success');
       } else {
         deployMessage = `Error: ${res?.error || 'Error al desplegar'}`;
         deployIsError = true;
@@ -398,6 +406,7 @@
             {deployMessage}
             {deployIsError}
             {handleDeploy}
+            onDeploy={handleDeploy}
           />
         {:else if activeTab === 'proxy'}
           <ProxyView {containers} />

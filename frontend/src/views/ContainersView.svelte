@@ -32,6 +32,7 @@
   export let deployMessage = '';
   export let deployIsError = false;
   export let handleDeploy;
+  export let onDeploy = null;
 
   let searchQuery = '';
   let actionLoading = {};
@@ -160,6 +161,7 @@
         {deployMessage}
         {deployIsError}
         {handleDeploy}
+        {onDeploy}
       />
     </div>
   {/if}

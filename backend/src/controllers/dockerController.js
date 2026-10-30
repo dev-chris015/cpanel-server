@@ -29,13 +29,25 @@ export const getContainers = async (req, res) => {
  */
 export const deployContainer = async (req, res) => {
   try {
-    const { image, name, ports, env } = req.body;
+    const { image, name, ports, env, network, binds } = req.body;
 
     if (!image) {
       return res.status(400).json({
         success: false,
         error: 'El nombre de la imagen es requerido (ej. nginx:latest)'
       });
+    }
+
+    // Asegurar red si se especifica
+    if (network) {
+      try {
+        const net = docker.getNetwork(network);
+        await net.inspect();
+      } catch (netErr) {
+        if (netErr.statusCode === 404) {
+          await docker.createNetwork({ Name: network, Driver: 'bridge' });
+        }
+      }
     }
 
     // Descargar la imagen si no existe localmente
@@ -54,20 +66,34 @@ export const deployContainer = async (req, res) => {
     const PortBindings = {};
     if (ports && Array.isArray(ports)) {
       ports.forEach(({ hostPort, containerPort }) => {
-        const key = `${containerPort}/tcp`;
-        ExposedPorts[key] = {};
-        PortBindings[key] = [{ HostPort: String(hostPort) }];
+        if (containerPort) {
+          const key = `${containerPort}/tcp`;
+          ExposedPorts[key] = {};
+          if (hostPort) {
+            PortBindings[key] = [{ HostPort: String(hostPort) }];
+          }
+        }
       });
+    }
+
+    const hostConfig = {
+      PortBindings,
+      AutoRemove: false
+    };
+
+    if (network) {
+      hostConfig.NetworkMode = network;
+    }
+
+    if (binds && Array.isArray(binds) && binds.length > 0) {
+      hostConfig.Binds = binds;
     }
 
     const containerOptions = {
       Image: image,
       name: name || undefined,
       ExposedPorts,
-      HostConfig: {
-        PortBindings,
-        AutoRemove: false
-      },
+      HostConfig: hostConfig,
       Env: env || []
     };
 
