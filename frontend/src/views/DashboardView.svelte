@@ -143,8 +143,8 @@
     <div class="metrics-grid">
       <!-- CPU -->
       <MetricCard 
-        title="Uso de CPU ({cpuCores} vCPUs)"
-        value="{cpuLoad.toFixed(1)} %"
+        title="CPU ({cpuCores} vCPUs)"
+        value="{cpuLoad.toFixed(1)}%"
         percent={cpuLoad}
         subtitle="{cpuBrand}"
         icon={Cpu}
@@ -152,28 +152,28 @@
 
       <!-- RAM -->
       <MetricCard 
-        title="Memoria RAM ({ramTotalGb} GB)"
+        title="RAM"
         value="{ramUsedGb} / {ramTotalGb} GB"
         percent={ramPercent}
-        subtitle="Disponible: {systemMetrics?.memory?.freeGb != null ? systemMetrics.memory.freeGb + ' GB' : '--'}"
+        subtitle="{systemMetrics?.memory?.freeGb != null ? `${systemMetrics.memory.freeGb} GB libres` : 'Memoria del host'}"
         icon={Database}
       />
 
       <!-- Disco Raíz / -->
       <MetricCard 
-        title="Almacenamiento (/)"
+        title="Disco Raíz (/)"
         value="{rootDisk ? `${rootDisk.usedGb} / ${rootDisk.sizeGb} GB` : 'N/A'}"
         percent={rootDisk?.usePercent || 0}
-        subtitle="{rootDisk?.availableGb != null ? `${rootDisk.availableGb} GB libres (${rootDisk.type || 'ext4'})` : 'Disco del sistema'}"
+        subtitle="{rootDisk?.availableGb != null ? `${rootDisk.availableGb} GB libres` : 'Sistema principal'}"
         icon={HardDrive}
       />
 
       <!-- Disco Temporal /mnt -->
       <MetricCard 
-        title="Almacenamiento (/mnt)"
+        title="Disco Almacén (/mnt)"
         value="{mntDisk ? `${mntDisk.usedGb} / ${mntDisk.sizeGb} GB` : 'No montado'}"
         percent={mntDisk?.usePercent || 0}
-        subtitle="{mntDisk ? `${mntDisk.availableGb ?? '--'} GB libres (${mntDisk.type || 'vhd'})` : 'Punto de montaje no detectado'}"
+        subtitle="{mntDisk?.availableGb != null ? `${mntDisk.availableGb} GB libres` : 'Volumen secundario'}"
         icon={HardDrive}
       />
     </div>
@@ -204,7 +204,7 @@
               </span>
             </div>
             <p class="service-desc">
-              Métricas por segundo de latencia, red, I/O de disco y salud integral de la máquina virtual.
+              Telemetría en tiempo real de red, latencia y salud de la máquina virtual.
             </p>
           </div>
         </div>
@@ -230,20 +230,20 @@
           </div>
           <div class="service-meta">
             <div class="service-title-row">
-              <h4>Escritorio Remoto TigerVNC</h4>
+              <h4>Escritorio Remoto VNC</h4>
               <span class="service-status-pill secure">
-                <span class="dot"></span> Puerto 5901 (SSH Tunnel)
+                <span class="dot"></span> Puerto 5901 (SSH)
               </span>
             </div>
             <p class="service-desc">
-              Sesión gráfica X11 cifrada con túnel SSH para gestión visual de escritorios y herramientas GUI.
+              Sesión gráfica X11 cifrada mediante túnel SSH para entorno de escritorio.
             </p>
           </div>
         </div>
 
         <!-- Instrucción de conexión SSH Tunnel -->
         <div class="vnc-instructions-box">
-          <div class="cmd-label">Comando para túnel seguro:</div>
+          <div class="cmd-label">Túnel SSH:</div>
           <div class="cmd-row">
             <code class="cmd-text font-mono">{VNC_SSH_COMMAND}</code>
             <button 
@@ -262,7 +262,7 @@
             </button>
           </div>
           <div class="vnc-tip">
-            Conecta tu cliente VNC local a <code class="font-mono">localhost:5901</code> tras iniciar el túnel.
+            Conecta tu cliente VNC a <code class="font-mono">localhost:5901</code> tras iniciar el túnel.
           </div>
         </div>
       </div>

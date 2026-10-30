@@ -98,8 +98,12 @@
     left: 0;
     right: 0;
     height: 2px;
-    opacity: 0.85;
-    transition: opacity 0.3s;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  .metric-card:hover .card-glow {
+    opacity: 0.9;
   }
 
   .level-normal .card-glow {

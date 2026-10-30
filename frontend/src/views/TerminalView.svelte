@@ -190,9 +190,9 @@
   .terminal-view-wrapper {
     display: flex;
     flex-direction: column;
-    background: #09090b;
-    border: 1px solid rgba(148, 163, 184, 0.15);
-    border-radius: 12px;
+    background: var(--card-bg, #09090b);
+    border: 1px solid var(--card-border, #222225);
+    border-radius: 14px;
     height: 75vh;
     min-height: 520px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
@@ -215,9 +215,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #020617;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-    padding: 0.65rem 1rem;
+    background: var(--card-bg, #121214);
+    border-bottom: 1px solid var(--card-border, #222225);
+    padding: 0.75rem 1rem;
     flex-wrap: wrap;
     gap: 0.75rem;
   }
@@ -232,7 +232,7 @@
     display: flex;
     align-items: center;
     gap: 0.45rem;
-    color: #f8fafc;
+    color: var(--text-main, #f8fafc);
     font-size: 0.85rem;
     font-weight: 600;
   }
@@ -250,20 +250,21 @@
   :global(.select-icon) {
     position: absolute;
     left: 0.65rem;
-    color: #64748b;
+    color: var(--text-muted, #a1a1aa);
     pointer-events: none;
   }
 
   .container-select {
-    background: #0f172a;
-    border: 1px solid rgba(148, 163, 184, 0.2);
-    color: #f8fafc;
+    background: var(--bg-dark, #000000);
+    border: 1px solid var(--card-border, #222225);
+    color: var(--text-main, #f8fafc);
     font-size: 0.8rem;
     padding: 0.4rem 0.75rem 0.4rem 2rem;
     border-radius: 6px;
     outline: none;
     font-family: inherit;
     cursor: pointer;
+    transition: border-color 0.2s;
   }
 
   .container-select:focus {
@@ -271,13 +272,13 @@
   }
 
   .container-select optgroup {
-    background: #09090b;
-    color: #94a3b8;
+    background: var(--card-bg, #121214);
+    color: var(--text-muted, #a1a1aa);
   }
 
   .container-select option {
-    background: #0f172a;
-    color: #f8fafc;
+    background: var(--bg-dark, #000000);
+    color: var(--text-main, #f8fafc);
   }
 
   .status-running-badge {
@@ -297,9 +298,9 @@
     display: inline-flex;
     align-items: center;
     padding: 0.2rem 0.5rem;
-    background: rgba(148, 163, 184, 0.1);
-    color: #94a3b8;
-    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: var(--surface-muted, #18181b);
+    color: var(--text-muted, #a1a1aa);
+    border: 1px solid var(--card-border, #222225);
     border-radius: 9999px;
     font-size: 0.7rem;
     font-weight: 600;
@@ -317,9 +318,9 @@
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    background: rgba(148, 163, 184, 0.1);
-    border: 1px solid rgba(148, 163, 184, 0.2);
-    color: #cbd5e1;
+    background: var(--surface-muted, #18181b);
+    border: 1px solid var(--card-border, #222225);
+    color: var(--text-main, #f8fafc);
     padding: 0.4rem 0.75rem;
     border-radius: 6px;
     font-size: 0.775rem;
@@ -329,9 +330,8 @@
   }
 
   .btn-tool:hover:not(:disabled) {
-    background: rgba(148, 163, 184, 0.2);
+    background: var(--card-border, #222225);
     color: #ffffff;
-    border-color: rgba(148, 163, 184, 0.3);
   }
 
   .btn-tool:disabled {
@@ -353,13 +353,9 @@
     align-items: center;
     justify-content: center;
     gap: 0.75rem;
-    color: #64748b;
+    color: var(--text-muted, #a1a1aa);
     font-size: 0.9rem;
     padding: 2rem;
     text-align: center;
-  }
-
-  .text-muted {
-    color: #64748b;
   }
 </style>
