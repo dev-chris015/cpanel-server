@@ -644,10 +644,11 @@
     align-items: flex-start;
     flex-wrap: wrap;
     gap: 1rem;
-    background: #0f172a;
-    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: var(--card-bg, #121214);
+    border: 1px solid var(--card-border, #222225);
     border-radius: 14px;
     padding: 1.25rem 1.5rem;
+    box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.4);
   }
 
   .header-info {
@@ -665,7 +666,7 @@
   .title-row h2 {
     font-size: 1.25rem;
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--text-main, #f4f4f5);
     margin: 0;
   }
 
@@ -685,9 +686,9 @@
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
-    background: transparent;
-    border: 1px solid rgba(148, 163, 184, 0.2);
-    color: #cbd5e1;
+    background: var(--surface-muted, #18181b);
+    border: 1px solid var(--card-border, #222225);
+    color: var(--text-main, #f4f4f5);
     padding: 0.55rem 0.95rem;
     border-radius: 8px;
     font-size: 0.8rem;
@@ -697,7 +698,7 @@
   }
 
   .btn-refresh:hover:not(:disabled) {
-    background: rgba(148, 163, 184, 0.1);
+    background: var(--card-border, #222225);
     color: #ffffff;
   }
 
@@ -790,7 +791,7 @@
   }
 
   .notice-code-block {
-    background: #020617;
+    background: var(--bg-dark, #000000);
     border: 1px solid rgba(239, 68, 68, 0.2);
     border-radius: 6px;
     padding: 0.6rem 0.8rem;
@@ -803,7 +804,7 @@
 
   .notice-explanation {
     font-size: 0.775rem;
-    color: #94a3b8;
+    color: var(--text-muted, #a1a1aa);
   }
 
   .btn-close-notice {
@@ -821,8 +822,8 @@
 
   /* Tarjetas Generales */
   .card {
-    background: #0f172a;
-    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: var(--card-bg, #121214);
+    border: 1px solid var(--card-border, #222225);
     border-radius: 14px;
     padding: 1.5rem;
     box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.4);
@@ -837,7 +838,7 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 0.5rem;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    border-bottom: 1px solid var(--card-border, #222225);
     padding-bottom: 0.85rem;
   }
 
@@ -851,7 +852,7 @@
     margin: 0;
     font-size: 1.05rem;
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--text-main, #f4f4f5);
   }
 
   .badge-resolver {
@@ -867,8 +868,9 @@
     font-size: 0.75rem;
     font-weight: 600;
     padding: 0.2rem 0.6rem;
-    background: rgba(148, 163, 184, 0.1);
-    color: #94a3b8;
+    background: var(--surface-muted, #18181b);
+    border: 1px solid var(--card-border, #222225);
+    color: var(--text-muted, #a1a1aa);
     border-radius: 9999px;
   }
 
@@ -894,7 +896,7 @@
   .form-label {
     font-size: 0.825rem;
     font-weight: 600;
-    color: #cbd5e1;
+    color: var(--text-main, #f4f4f5);
   }
 
   .label-with-action {
@@ -930,17 +932,17 @@
   :global(.input-icon) {
     position: absolute;
     left: 0.85rem;
-    color: #64748b;
+    color: var(--text-muted, #a1a1aa);
     pointer-events: none;
   }
 
   .form-input, .form-select {
     width: 100%;
-    background: #020617;
-    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: var(--bg-dark, #000000);
+    border: 1px solid var(--card-border, #222225);
     border-radius: 8px;
     padding: 0.65rem 0.85rem 0.65rem 2.4rem;
-    color: #f8fafc;
+    color: var(--text-main, #f4f4f5);
     font-size: 0.85rem;
     box-sizing: border-box;
     transition: border-color 0.2s, box-shadow 0.2s;
@@ -954,7 +956,7 @@
 
   .input-hint {
     font-size: 0.725rem;
-    color: #64748b;
+    color: var(--text-muted, #a1a1aa);
   }
 
   /* SSL Toggle Box */
@@ -962,8 +964,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #020617;
-    border: 1px solid rgba(148, 163, 184, 0.15);
+    background: var(--surface-muted, #18181b);
+    border: 1px solid var(--card-border, #222225);
     border-radius: 10px;
     padding: 1rem 1.25rem;
     gap: 1rem;
@@ -984,13 +986,13 @@
   .switch-title {
     font-size: 0.9rem;
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--text-main, #f4f4f5);
   }
 
   .switch-desc {
     margin: 0;
     font-size: 0.8rem;
-    color: #94a3b8;
+    color: var(--text-muted, #a1a1aa);
     line-height: 1.4;
   }
 
@@ -1013,7 +1015,7 @@
     position: absolute;
     cursor: pointer;
     top: 0; left: 0; right: 0; bottom: 0;
-    background-color: #334155;
+    background-color: var(--card-border, #222225);
     border-radius: 9999px;
     transition: 0.3s;
   }
@@ -1045,7 +1047,7 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 1rem;
-    border-top: 1px solid rgba(148, 163, 184, 0.08);
+    border-top: 1px solid var(--card-border, #222225);
     padding-top: 1rem;
   }
 
@@ -1057,7 +1059,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    background: #0284c7;
+    background: var(--primary, #0284c7);
     border: none;
     color: #ffffff;
     padding: 0.65rem 1.25rem;
@@ -1069,7 +1071,7 @@
   }
 
   .btn-submit:hover:not(:disabled) {
-    background: #0369a1;
+    background: var(--primary-hover, #0369a1);
     transform: translateY(-1px);
   }
 
@@ -1092,19 +1094,19 @@
   .vhost-table th {
     text-align: left;
     padding: 0.75rem 1rem;
-    color: #94a3b8;
+    color: var(--text-muted, #a1a1aa);
     font-weight: 600;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+    border-bottom: 1px solid var(--card-border, #222225);
   }
 
   .vhost-table td {
     padding: 0.85rem 1rem;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    border-bottom: 1px solid var(--card-border, #222225);
     vertical-align: middle;
   }
 
   .vhost-table tr:hover td {
-    background: rgba(30, 41, 59, 0.3);
+    background: var(--surface-muted, #18181b);
   }
 
   .domain-cell {
@@ -1127,11 +1129,11 @@
   }
 
   .upstream-tag {
-    background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: var(--bg-dark, #000000);
+    border: 1px solid var(--card-border, #222225);
     padding: 0.25rem 0.5rem;
     border-radius: 6px;
-    color: #cbd5e1;
+    color: var(--text-main, #f4f4f5);
     font-size: 0.8rem;
   }
 
