@@ -411,7 +411,7 @@
         {:else if activeTab === 'proxy'}
           <ProxyView {containers} />
         {:else if activeTab === 'databases'}
-          <DatabasesView />
+          <DatabasesView {containers} />
         {:else if activeTab === 'terminal'}
           <TerminalView {containers} />
         {:else if activeTab === 'maintenance'}

@@ -222,6 +222,83 @@ export const listSchemas = async () => {
   }
 };
 
+/**
+ * Crea una base de datos junto con su usuario MariaDB y asignación de todos los privilegios.
+ * Ejecuta:
+ * 1. CREATE DATABASE `<name>`
+ * 2. CREATE USER `<username>`@`%` IDENTIFIED BY ...
+ * 3. GRANT ALL PRIVILEGES ON `<name>`.* TO `<username>`@`%`
+ * 4. FLUSH PRIVILEGES
+ */
+export const createDatabaseWithUser = async ({
+  name,
+  username,
+  password,
+  host = '%',
+  charset = 'utf8mb4',
+  collation = 'utf8mb4_unicode_ci',
+  site = null
+}) => {
+  if (!isValidSqlIdentifier(name)) {
+    throw new Error('Nombre de base de datos inválido. Solo se permiten letras, números y guiones bajos (máx. 64 caracteres).');
+  }
+
+  const cleanDbName = name.toLowerCase();
+  if (SYSTEM_SCHEMAS.includes(cleanDbName)) {
+    throw new Error(`Operación denegada: "${name}" es un nombre reservado para esquemas del sistema.`);
+  }
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+
+    // 1. Crear base de datos
+    await connection.query(`CREATE DATABASE IF NOT EXISTS \`${name}\` CHARACTER SET ${charset} COLLATE ${collation};`);
+
+    let createdUser = null;
+    // 2. Si se proporcionó usuario y contraseña, crearlo y otorgar privilegios
+    if (username && password) {
+      if (!isValidUserIdentifier(username)) {
+        throw new Error('Nombre de usuario inválido. Solo se permiten caracteres alfanuméricos, guiones y guiones bajos (máx. 32 caracteres).');
+      }
+
+      const cleanUser = username.toLowerCase();
+      if (SYSTEM_USERS.includes(cleanUser) || cleanUser === 'root') {
+        throw new Error(`Operación denegada: No se puede crear o sobrescribir el usuario protegido "${username}".`);
+      }
+
+      // Crear usuario
+      await connection.query(
+        `CREATE USER IF NOT EXISTS \`${username}\`@\`${host}\` IDENTIFIED BY ${connection.escape(password)};`
+      );
+
+      // Conceder todos los privilegios sobre la base de datos
+      await connection.query(
+        `GRANT ALL PRIVILEGES ON \`${name}\`.* TO \`${username}\`@\`${host}\`;`
+      );
+
+      // Aplicar privilegios
+      await connection.query('FLUSH PRIVILEGES;');
+      createdUser = username;
+    }
+
+    return {
+      success: true,
+      database: name,
+      user: createdUser,
+      host,
+      site: site || null,
+      charset,
+      collation,
+      message: createdUser 
+        ? `Base de datos "${name}" y usuario "${createdUser}" creados con todos los privilegios asignados.`
+        : `Base de datos "${name}" creada exitosamente.`
+    };
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
 // ==============================================================================
 // 2. DISPARO DE VOLCADOS MANUALES CON MARIADB-DUMP
 // ==============================================================================
@@ -806,6 +883,7 @@ export default {
   getBackupDir,
   generateBackupTimestamp,
   createSchema,
+  createDatabaseWithUser,
   dropSchema,
   listSchemas,
   createBackup,

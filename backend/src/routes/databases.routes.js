@@ -3,6 +3,7 @@ import path from 'path';
 import {
   getMariaDbTelemetry,
   createSchema,
+  createDatabaseWithUser,
   dropSchema,
   listSchemas,
   createBackup,
@@ -72,16 +73,29 @@ router.get('/schemas', async (req, res) => {
 
 /**
  * POST /api/databases/schemas
- * Crear un nuevo esquema en MariaDB.
+ * Crear un nuevo esquema en MariaDB con soporte para creación atómica de usuario y privilegios.
  */
 router.post('/schemas', async (req, res) => {
   try {
-    const { name, charset, collation } = req.body;
+    const { name, charset, collation, username, password, host, site } = req.body;
     if (!name) {
       return res.status(400).json({
         success: false,
         error: 'El nombre del esquema (name) es requerido.'
       });
+    }
+
+    if (username && password) {
+      const result = await createDatabaseWithUser({
+        name,
+        username,
+        password,
+        host: host || '%',
+        charset,
+        collation,
+        site
+      });
+      return res.status(201).json(result);
     }
 
     const result = await createSchema(name, { charset, collation });

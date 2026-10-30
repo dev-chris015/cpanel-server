@@ -21,9 +21,15 @@
     Key,
     Lock,
     X,
-    FolderArchive
+    FolderArchive,
+    Server,
+    Globe,
+    Copy,
+    Check
   } from 'lucide-svelte';
   import { api } from '../lib/api.js';
+
+  export let containers = [];
 
   // Navegación de pestañas internas: 'schemas' | 'users'
   let activeSubTab = 'schemas';
@@ -46,9 +52,104 @@
 
   // Formulario: Crear Esquema
   let showCreateSchemaModal = false;
+  let selectedSite = ''; // 'wp_site_1', etc. o 'independent'
   let newSchemaName = '';
   let newSchemaCharset = 'utf8mb4';
   let newSchemaCollation = 'utf8mb4_unicode_ci';
+  let newSchemaUser = '';
+  let newSchemaPassword = '';
+  let copiedGeneratedPassword = false;
+
+  // Lista de sitios disponibles a partir de los contenedores
+  $: availableSites = (containers || []).map(c => {
+    const rawName = c.name || (c.Names && c.Names[0]) || '';
+    const clean = rawName.replace(/^\//, '');
+    return clean;
+  }).filter(n => n && !['cpanel-backend', 'cpanel-frontend', 'nginx-proxy', 'mariadb', 'salones_db', 'tlya_redis'].includes(n));
+
+  function generateSecureDbPassword() {
+    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+~|}{[]';
+    let result = '';
+    const randomValues = new Uint32Array(18);
+    window.crypto.getRandomValues(randomValues);
+    for (let i = 0; i < 18; i++) {
+      result += charset[randomValues[i] % charset.length];
+    }
+    return result;
+  }
+
+  function handleSiteSelectionChange(event) {
+    const siteVal = event.target.value;
+    selectedSite = siteVal;
+
+    if (siteVal && siteVal !== 'independent') {
+      // Extraer sufijo o identificador: ej. wp_site_4 -> 4; tienda -> tienda
+      const suffixMatch = siteVal.match(/^wp_site_(.+)$/i);
+      const suffix = suffixMatch ? suffixMatch[1] : siteVal.replace(/^wp_/, '');
+
+      newSchemaName = `wp_db_${suffix}`;
+      newSchemaUser = `wp_user_${suffix}`;
+      if (!newSchemaPassword) {
+        newSchemaPassword = generateSecureDbPassword();
+      }
+    } else if (siteVal === 'independent') {
+      newSchemaName = '';
+      newSchemaUser = '';
+      newSchemaPassword = '';
+    }
+  }
+
+  function handleOpenCreateSchemaModal() {
+    selectedSite = '';
+    newSchemaName = '';
+    newSchemaUser = '';
+    newSchemaPassword = '';
+    copiedGeneratedPassword = false;
+    showCreateSchemaModal = true;
+  }
+
+  function copyPasswordToClipboard(text) {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    copiedGeneratedPassword = true;
+    setTimeout(() => { copiedGeneratedPassword = false; }, 2000);
+  }
+
+  // Detectar sitio/contenedor asociado a una base de datos
+  function getAssociatedSite(dbName) {
+    if (!dbName) return null;
+    const cleanDb = dbName.toLowerCase();
+    if (['information_schema', 'mysql', 'performance_schema', 'sys', 'test'].includes(cleanDb)) {
+      return null;
+    }
+
+    // Caso 1: wp_db_<id> -> wp_site_<id>
+    const wpDbMatch = cleanDb.match(/^wp_db_(.+)$/);
+    if (wpDbMatch) {
+      const id = wpDbMatch[1];
+      const targetSite = `wp_site_${id}`;
+      // Verificar si existe en contenedores
+      const exists = (containers || []).some(c => {
+        const name = (c.name || c.Names?.[0] || '').replace(/^\//, '').toLowerCase();
+        return name === targetSite.toLowerCase();
+      });
+      return {
+        name: targetSite,
+        matched: exists,
+        isWordpress: true
+      };
+    }
+
+    // Caso 2: Contenedor con nombre coincidente o env var
+    for (const c of containers || []) {
+      const cName = (c.name || c.Names?.[0] || '').replace(/^\//, '');
+      if (cName.toLowerCase().includes(cleanDb) || cleanDb.includes(cName.toLowerCase())) {
+        return { name: cName, matched: true, isWordpress: /wordpress/i.test(cName) };
+      }
+    }
+
+    return null;
+  }
 
   // Formulario: Crear Usuario
   let showCreateUserModal = false;
@@ -139,6 +240,11 @@
 
   // Acciones sobre Esquemas
   async function handleCreateSchema() {
+    if (!selectedSite) {
+      alert('Debes seleccionar un "Sitio / Contenedor Destino" o elegir "Independiente / Ninguno".');
+      return;
+    }
+
     const cleanName = newSchemaName.trim().toLowerCase();
     if (!cleanName) {
       alert('Ingresa un nombre para la base de datos.');
@@ -152,17 +258,30 @@
 
     actionLoading = true;
     try {
-      const res = await api.post('/databases/schemas', {
+      const payload = {
         name: cleanName,
         charset: newSchemaCharset,
-        collation: newSchemaCollation
-      });
+        collation: newSchemaCollation,
+        site: selectedSite !== 'independent' ? selectedSite : null
+      };
+
+      if (newSchemaUser.trim() && newSchemaPassword.trim()) {
+        payload.username = newSchemaUser.trim();
+        payload.password = newSchemaPassword.trim();
+        payload.host = '%';
+      }
+
+      const res = await api.post('/databases/schemas', payload);
 
       if (res && res.success) {
-        showNotice(`Base de datos "${cleanName}" creada exitosamente.`, 'success');
+        showNotice(res.message || `Base de datos "${cleanName}" creada exitosamente.`, 'success');
         newSchemaName = '';
+        newSchemaUser = '';
+        newSchemaPassword = '';
+        selectedSite = '';
         showCreateSchemaModal = false;
         await fetchSchemas();
+        await fetchUsers();
         await fetchTelemetry();
       } else {
         showNotice(res?.error || 'No se pudo crear la base de datos.', 'error');
@@ -441,7 +560,7 @@
           <button 
             type="button" 
             class="btn-primary" 
-            on:click={() => showCreateSchemaModal = true}
+            on:click={handleOpenCreateSchemaModal}
           >
             <Plus size={15} />
             <span>Crear Base de Datos</span>
@@ -461,6 +580,7 @@
               <thead>
                 <tr>
                   <th>Nombre de la Base de Datos</th>
+                  <th>Sitio / Contenedor Asociado</th>
                   <th>Tamaño</th>
                   <th>Tablas</th>
                   <th>Charset / Collation</th>
@@ -469,6 +589,7 @@
               </thead>
               <tbody>
                 {#each schemas as s}
+                  {@const assoc = getAssociatedSite(s.name)}
                   <tr>
                     <td class="col-name">
                       <div class="schema-name-cell">
@@ -478,6 +599,19 @@
                           <span class="system-badge">Sistema</span>
                         {/if}
                       </div>
+                    </td>
+
+                    <td class="col-site">
+                      {#if assoc}
+                        <div class="site-association-pill" class:site-matched={assoc.matched} title="Asociado al contenedor {assoc.name}">
+                          <Server size={12} class="text-cyan" />
+                          <span class="font-mono">{assoc.name}</span>
+                        </div>
+                      {:else if s.isSystem}
+                        <span class="text-muted font-mono text-xs">Interno MariaDB</span>
+                      {:else}
+                        <span class="text-muted font-mono text-xs">Independiente / Global</span>
+                      {/if}
                     </td>
 
                     <td class="col-size font-mono">
@@ -825,6 +959,39 @@
         </div>
 
         <form on:submit|preventDefault={handleCreateSchema} class="modal-form">
+          <!-- 1. Sitio / Contenedor Destino (Requerido) -->
+          <div class="form-group">
+            <label for="create-db-site" class="form-label">
+              Sitio / Contenedor Destino <span class="required">*</span>
+            </label>
+            <div class="input-box">
+              <Server size={15} class="icon-input" />
+              <select 
+                id="create-db-site"
+                class="form-control"
+                value={selectedSite}
+                on:change={handleSiteSelectionChange}
+                required
+              >
+                <option value="" disabled selected>-- Selecciona un Sitio o elige Independiente --</option>
+                {#if availableSites.length > 0}
+                  <optgroup label="Sitios / Contenedores en Ejecución">
+                    {#each availableSites as siteName}
+                      <option value={siteName}>{siteName}</option>
+                    {/each}
+                  </optgroup>
+                {/if}
+                <optgroup label="Opciones Adicionales">
+                  <option value="independent">Independiente / Ninguno</option>
+                </optgroup>
+              </select>
+            </div>
+            <span class="text-xs text-muted">
+              Al seleccionar un sitio (ej. <code>wp_site_4</code>), se autocompletarán la BD (<code>wp_db_4</code>) y el usuario (<code>wp_user_4</code>).
+            </span>
+          </div>
+
+          <!-- 2. Nombre de la Base de Datos -->
           <div class="form-group">
             <label for="create-db-name" class="form-label">
               Nombre de la Base de Datos <span class="required">*</span>
@@ -835,13 +1002,69 @@
                 id="create-db-name"
                 type="text" 
                 bind:value={newSchemaName} 
-                placeholder="ej. wp_tienda_online" 
+                placeholder="ej. wp_db_1" 
                 class="form-control font-mono"
                 required
               />
             </div>
             <span class="text-xs text-muted">Solo caracteres alfanuméricos y guiones bajos (_).</span>
           </div>
+
+          <!-- Campos de Usuario y Contraseña Autogenerada si aplica sitio -->
+          {#if selectedSite && selectedSite !== 'independent'}
+            <div class="autofill-box">
+              <div class="form-group">
+                <label for="create-db-user" class="form-label">
+                  Usuario MariaDB Autocompletado <span class="required">*</span>
+                </label>
+                <div class="input-box">
+                  <Users size={15} class="icon-input" />
+                  <input 
+                    id="create-db-user"
+                    type="text" 
+                    bind:value={newSchemaUser} 
+                    class="form-control font-mono"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="create-db-password" class="form-label">
+                  Contraseña Generada Automáticamente <span class="required">*</span>
+                </label>
+                <div class="input-group-password">
+                  <div class="input-box">
+                    <Key size={15} class="icon-input" />
+                    <input 
+                      id="create-db-password"
+                      type="text" 
+                      bind:value={newSchemaPassword} 
+                      class="form-control font-mono"
+                      required
+                    />
+                  </div>
+                  <button 
+                    type="button" 
+                    class="btn-copy-pass"
+                    on:click={() => copyPasswordToClipboard(newSchemaPassword)}
+                    title="Copiar contraseña al portapapeles"
+                  >
+                    {#if copiedGeneratedPassword}
+                      <Check size={14} class="text-green" />
+                      <span>Copiado</span>
+                    {:else}
+                      <Copy size={14} />
+                      <span>Copiar</span>
+                    {/if}
+                  </button>
+                </div>
+                <span class="text-xs text-muted">
+                  El usuario recibirá privilegios completos (<code>GRANT ALL PRIVILEGES ON `{newSchemaName || 'db'}`.* TO `{newSchemaUser || 'user'}`@'%'</code>).
+                </span>
+              </div>
+            </div>
+          {/if}
 
           <div class="form-grid">
             <div class="form-group">
@@ -876,9 +1099,9 @@
             <button 
               type="submit" 
               class="btn-primary" 
-              disabled={actionLoading || !newSchemaName.trim()}
+              disabled={actionLoading || !newSchemaName.trim() || !selectedSite}
             >
-              {actionLoading ? 'Creando...' : 'Crear Esquema'}
+              {actionLoading ? 'Creando...' : 'Crear Base de Datos'}
             </button>
           </div>
         </form>
@@ -1494,6 +1717,63 @@
     color: #94a3b8;
     font-size: 0.9rem;
     text-align: center;
+  }
+
+  .site-association-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(14, 165, 233, 0.1);
+    border: 1px solid rgba(14, 165, 233, 0.25);
+    color: #38bdf8;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.775rem;
+  }
+
+  .site-matched {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #4ade80;
+  }
+
+  .autofill-box {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px dashed rgba(56, 189, 248, 0.3);
+    border-radius: 8px;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .input-group-password {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .input-group-password .input-box {
+    flex: 1;
+  }
+
+  .btn-copy-pass {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    padding: 0 0.85rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-copy-pass:hover {
+    background: #334155;
+    color: #ffffff;
   }
 
   /* Utilidades */
