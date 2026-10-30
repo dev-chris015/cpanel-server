@@ -53,8 +53,8 @@
 
 <style>
   .metric-card {
-    background: #0f172a;
-    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: var(--card-bg, #121214);
+    border: 1px solid var(--card-border, #222225);
     border-radius: 12px;
     padding: 1.15rem 1.25rem;
     display: flex;
@@ -65,7 +65,7 @@
   }
 
   .metric-card:hover {
-    border-color: rgba(148, 163, 184, 0.25);
+    border-color: rgba(56, 189, 248, 0.3);
     box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
     transform: translateY(-2px);
   }
@@ -113,7 +113,7 @@
   .card-title {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #94a3b8;
+    color: var(--text-muted, #a1a1aa);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -122,7 +122,7 @@
   .card-value {
     font-size: 1.05rem;
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--text-main, #f4f4f5);
     white-space: nowrap;
   }
 
@@ -134,11 +134,11 @@
   .progress-track {
     width: 100%;
     height: 8px;
-    background: rgba(30, 41, 59, 0.8);
+    background: var(--surface-muted, #18181b);
     border-radius: 9999px;
     overflow: hidden;
     position: relative;
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--card-border, #222225);
   }
 
   .progress-fill {
@@ -168,7 +168,7 @@
     align-items: center;
     justify-content: space-between;
     font-size: 0.775rem;
-    color: #64748b;
+    color: var(--text-muted, #a1a1aa);
     gap: 0.5rem;
   }
 
@@ -193,5 +193,20 @@
 
   .percent-tag.level-danger {
     color: #f87171;
+  }
+
+  @media (max-width: 480px) {
+    .metric-card {
+      padding: 0.95rem 1rem;
+      gap: 0.65rem;
+    }
+
+    .card-value {
+      font-size: 0.95rem;
+    }
+
+    .card-title {
+      font-size: 0.8rem;
+    }
   }
 </style>

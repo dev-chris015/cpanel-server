@@ -637,6 +637,7 @@
     margin: 0 auto;
     width: 100%;
     box-sizing: border-box;
+    min-width: 0;
   }
 
   /* Toasts Globales */
@@ -725,11 +726,36 @@
     }
 
     .topbar {
-      padding: 1rem 1.25rem;
+      padding: 0.85rem 1rem;
+    }
+
+    .topbar-actions {
+      gap: 0.5rem;
+    }
+
+    .user-pill {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+    }
+
+    .theme-toggle-btn, .logout-btn {
+      padding: 0.4rem 0.6rem;
+    }
+
+    .title-meta h1 {
+      font-size: 1.15rem;
+    }
+
+    .title-meta p {
+      font-size: 0.75rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
 
     .view-viewport {
-      padding: 1.25rem 1rem;
+      padding: 1rem 0.75rem;
     }
 
     .theme-label, .logout-label {
@@ -738,9 +764,44 @@
 
     .toasts-container {
       bottom: 1rem;
-      right: 1rem;
-      left: 1rem;
+      right: 0.75rem;
+      left: 0.75rem;
       max-width: none;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .topbar {
+      padding: 0.75rem;
+    }
+
+    .topbar-title-section {
+      gap: 0.5rem;
+      min-width: 0;
+    }
+
+    .title-meta {
+      min-width: 0;
+    }
+
+    .title-meta h1 {
+      font-size: 1.05rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-pill .username {
+      display: none;
+    }
+
+    .user-pill {
+      padding: 0.25rem;
+      border-radius: 50%;
+    }
+
+    .view-viewport {
+      padding: 0.85rem 0.5rem;
     }
   }
 </style>
