@@ -1,4 +1,5 @@
 import Docker from 'dockerode';
+import { createAndDeployContainer } from '../services/docker.service.js';
 
 const socketPath = process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock';
 const docker = new Docker({ socketPath });
@@ -25,11 +26,12 @@ export const getContainers = async (req, res) => {
 };
 
 /**
- * Desplegar / iniciar un nuevo contenedor de Docker
+ * Desplegar / iniciar un nuevo contenedor de Docker conectándolo automáticamente
+ * a la red configurada (por defecto 'server-net') y asociando volúmenes persistentes nombrados.
  */
 export const deployContainer = async (req, res) => {
   try {
-    const { image, name, ports, env, network, binds } = req.body;
+    const { image, name, ports, env, network, binds, volumes, labels } = req.body;
 
     if (!image) {
       return res.status(400).json({
@@ -38,77 +40,26 @@ export const deployContainer = async (req, res) => {
       });
     }
 
-    // Asegurar red si se especifica
-    if (network) {
-      try {
-        const net = docker.getNetwork(network);
-        await net.inspect();
-      } catch (netErr) {
-        if (netErr.statusCode === 404) {
-          await docker.createNetwork({ Name: network, Driver: 'bridge' });
-        }
-      }
-    }
-
-    // Descargar la imagen si no existe localmente
-    await new Promise((resolve, reject) => {
-      docker.pull(image, (err, stream) => {
-        if (err) return reject(err);
-        docker.modem.followProgress(stream, (err, output) => {
-          if (err) return reject(err);
-          resolve(output);
-        });
-      });
+    const deployed = await createAndDeployContainer({
+      image,
+      name,
+      ports,
+      env,
+      network: network || 'server-net',
+      binds,
+      volumes,
+      labels
     });
-
-    // Mapeo de puertos opcional
-    const ExposedPorts = {};
-    const PortBindings = {};
-    if (ports && Array.isArray(ports)) {
-      ports.forEach(({ hostPort, containerPort }) => {
-        if (containerPort) {
-          const key = `${containerPort}/tcp`;
-          ExposedPorts[key] = {};
-          if (hostPort) {
-            PortBindings[key] = [{ HostPort: String(hostPort) }];
-          }
-        }
-      });
-    }
-
-    const hostConfig = {
-      PortBindings,
-      AutoRemove: false
-    };
-
-    if (network) {
-      hostConfig.NetworkMode = network;
-    }
-
-    if (binds && Array.isArray(binds) && binds.length > 0) {
-      hostConfig.Binds = binds;
-    }
-
-    const containerOptions = {
-      Image: image,
-      name: name || undefined,
-      ExposedPorts,
-      HostConfig: hostConfig,
-      Env: env || []
-    };
-
-    const container = await docker.createContainer(containerOptions);
-    await container.start();
-
-    const info = await container.inspect();
 
     res.status(201).json({
       success: true,
       message: `Contenedor ${image} desplegado correctamente`,
       data: {
-        id: info.Id,
-        name: info.Name,
-        status: info.State.Status
+        id: deployed.id,
+        name: deployed.name,
+        status: deployed.status,
+        network: deployed.network,
+        binds: deployed.binds
       }
     });
   } catch (error) {
