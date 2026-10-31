@@ -650,7 +650,7 @@ const getVHost = async (req, res) => {
  * POST /api/proxy/vhosts y POST /api/proxy
  * Crear o actualizar un Virtual Host con generador de VHosts y Rollback Atómico con doble nginx -t.
  */
-const createOrUpdateVHost = async (req, res) => {
+export const createOrUpdateVHost = async (req, res) => {
   try {
     const { domain, target, hasSsl, sslCertPath, sslKeyPath, customResolver } = req.body;
 
