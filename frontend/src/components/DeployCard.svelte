@@ -17,9 +17,11 @@
     Network,
     Sparkles,
     Copy,
-    Check
+    Check,
+    AlertTriangle
   } from 'lucide-svelte';
 
+  export let containers = [];
   export let isDeploying = false;
   export let deployMessage = '';
   export let deployIsError = false;
@@ -86,7 +88,46 @@
   export let hostPort = '';
   export let containerPort = '';
 
+  // Validación reactiva de colisión de puerto host contra contenedores activos
+  $: portConflict = (() => {
+    if (activeTab !== 'custom') return null;
+    const pStr = hostPort ? String(hostPort).trim() : '';
+    if (!pStr) return null;
+    const portNum = parseInt(pStr, 10);
+    if (!portNum || isNaN(portNum)) return null;
+
+    if (!Array.isArray(containers)) return null;
+
+    for (const c of containers) {
+      const state = (c.State || c.state || '').toLowerCase();
+      // Solo validar contra contenedores activos / en ejecución
+      const isRunning = state === 'running' || !state || state.includes('up');
+      if (!isRunning) continue;
+
+      const cName = (c.name || c.Names?.[0] || '').replace(/^\//, '') || c.Id?.slice(0, 12) || 'contenedor';
+
+      // Inspeccionar array de puertos expuestos por Docker
+      if (Array.isArray(c.Ports || c.ports)) {
+        const portsList = c.Ports || c.ports;
+        for (const p of portsList) {
+          const publicPort = p.PublicPort || p.publicPort;
+          if (publicPort && Number(publicPort) === portNum) {
+            return {
+              port: portNum,
+              containerName: cName
+            };
+          }
+        }
+      }
+    }
+
+    return null;
+  })();
+
   function handleSubmit() {
+    if (activeTab === 'custom' && portConflict) {
+      return;
+    }
     if (activeTab === 'wordpress') {
       const payload = {
         type: 'wordpress',
@@ -360,9 +401,17 @@
                 type="number" 
                 bind:value={hostPort} 
                 placeholder="ej. 8080" 
+                class:input-error={Boolean(portConflict)}
               />
             </div>
-            <span class="help-text">Puerto accesible en la máquina virtual (opcional).</span>
+            {#if portConflict}
+              <div class="port-conflict-inline-alert" role="alert">
+                <AlertTriangle size={14} class="conflict-alert-icon" />
+                <span>⚠️ El puerto {portConflict.port} ya está en uso por el contenedor "{portConflict.containerName}".</span>
+              </div>
+            {:else}
+              <span class="help-text">Puerto accesible en la máquina virtual (opcional).</span>
+            {/if}
           </div>
           
           <div class="field-group">
@@ -403,7 +452,12 @@
 
     <!-- Botón de Envío -->
     <div class="submit-row">
-      <button type="submit" class="btn-gradient-submit" disabled={isDeploying}>
+      <button 
+        type="submit" 
+        class="btn-gradient-submit" 
+        disabled={isDeploying || (activeTab === 'custom' && Boolean(portConflict))}
+        title={activeTab === 'custom' && portConflict ? `El puerto host ${portConflict.port} está en conflicto con otro contenedor` : ''}
+      >
         {#if isDeploying}
           <Loader2 size={18} class="spin" />
           <span>Inicializando y Desplegando...</span>
@@ -630,6 +684,36 @@
     font-size: 0.92rem;
     transition: all 0.2s ease;
     box-sizing: border-box;
+  }
+
+  .input-group input.input-error {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25) !important;
+  }
+
+  .port-conflict-inline-alert {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: #f87171;
+    font-size: 0.76rem;
+    font-weight: 500;
+    margin-top: 0.25rem;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    padding: 0.35rem 0.65rem;
+    border-radius: 6px;
+    line-height: 1.35;
+  }
+
+  :global(body.theme-light) .port-conflict-inline-alert {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #b91c1c;
+  }
+
+  :global(.conflict-alert-icon) {
+    flex-shrink: 0;
   }
 
   .input-group input:focus {

@@ -153,6 +153,7 @@
   {#if showDeployModal}
     <div class="deploy-wrapper">
       <DeployCard 
+        {containers}
         bind:imageName 
         bind:containerName 
         bind:hostPort 
