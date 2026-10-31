@@ -520,6 +520,33 @@ const isValidDomain = (domain) => {
 };
 
 /**
+ * Extrae el host (nombre de contenedor o IP) de una cadena de destino upstream.
+ * Ejemplo: "app:80" -> "app", "http://my_container:3000" -> "my_container"
+ */
+export const extractHostFromTarget = (targetStr) => {
+  if (!targetStr || typeof targetStr !== 'string') return '';
+  const clean = targetStr.trim().replace(/^https?:\/\//i, '').replace(/^\/+/, '');
+  const host = clean.split(':')[0].split('/')[0];
+  return host.toLowerCase();
+};
+
+/**
+ * Extrae el puerto numérico de una cadena de destino upstream.
+ * Ejemplo: "app:8080" -> 8080, "http://my_container:3000" -> 3000, "app" -> null
+ */
+export const extractPortFromTarget = (targetStr) => {
+  if (!targetStr || typeof targetStr !== 'string') return null;
+  const clean = targetStr.trim().replace(/^https?:\/\//i, '').replace(/^\/+/, '');
+  const hostAndPort = clean.split('/')[0];
+  const parts = hostAndPort.split(':');
+  if (parts.length > 1) {
+    const portNum = parseInt(parts[1], 10);
+    return isNaN(portNum) ? null : portNum;
+  }
+  return null;
+};
+
+/**
  * GET /api/proxy/vhosts y GET /api/proxy
  * Listar todos los VHosts configurados.
  */
@@ -639,6 +666,94 @@ const createOrUpdateVHost = async (req, res) => {
         success: false,
         error: 'El campo "target" es requerido (ej: cpanel-frontend:80 o http://127.0.0.1:3000)'
       });
+    }
+
+    const cleanDomain = domain.trim().toLowerCase();
+    const targetHost = extractHostFromTarget(target);
+    const targetPort = extractPortFromTarget(target);
+
+    // 1. Validación de Unicidad de Dominio por Contenedor
+    // Si el contenedor ya está referenciado por otro VHost diferente a domain, rechazar con 400 Bad Request
+    if (targetHost) {
+      const vhostsDir = getVHostsDir();
+      if (fs.existsSync(vhostsDir)) {
+        const confFiles = fs.readdirSync(vhostsDir).filter(f => f.endsWith('.conf'));
+        for (const file of confFiles) {
+          const filePath = path.join(vhostsDir, file);
+          try {
+            const content = fs.readFileSync(filePath, 'utf8');
+            const existingTarget = extractUpstreamTarget(content);
+            if (existingTarget) {
+              const existingHost = extractHostFromTarget(existingTarget);
+              if (existingHost === targetHost) {
+                // Obtener el dominio del VHost existente
+                const serverNameMatch = content.match(/server_name\s+([^;]+);/i);
+                let existingDomain = file.replace(/\.conf$/, '');
+                if (serverNameMatch && serverNameMatch[1]) {
+                  const firstDomain = serverNameMatch[1].trim().split(/\s+/)[0];
+                  if (firstDomain && isValidDomain(firstDomain)) {
+                    existingDomain = firstDomain;
+                  }
+                }
+                existingDomain = existingDomain.toLowerCase();
+
+                // Si es un dominio diferente al que se está creando/actualizando
+                if (existingDomain !== cleanDomain) {
+                  return res.status(400).json({
+                    success: false,
+                    error: `El contenedor '${targetHost}' ya tiene un dominio asociado ('${existingDomain}'). No se permite asociar más de un dominio por contenedor.`
+                  });
+                }
+              }
+            }
+          } catch (readErr) {
+            console.warn(`No se pudo leer ${file} para validación de unicidad de VHost:`, readErr.message);
+          }
+        }
+      }
+    }
+
+    // 2. Validación de Puerto Libre en Backend
+    // Comprobar que el puerto no colisione con el puerto público o privado de otro contenedor en Docker
+    if (targetPort && docker) {
+      try {
+        const containers = await docker.listContainers({ all: true });
+        for (const c of containers) {
+          const cNames = Array.isArray(c.Names) ? c.Names : [];
+          const normalizedNames = cNames.map(n => n.replace(/^\//, '').toLowerCase());
+          const cId = (c.Id || '').substring(0, 12).toLowerCase();
+
+          // Si el contenedor inspeccionado es el mismo del targetHost, no cuenta como "otro" contenedor
+          const isSameContainer = targetHost && (
+            normalizedNames.includes(targetHost) ||
+            cId === targetHost ||
+            (c.Id && c.Id.toLowerCase().startsWith(targetHost))
+          );
+
+          if (isSameContainer) {
+            continue;
+          }
+
+          const ports = c.Ports || c.ports || [];
+          if (Array.isArray(ports)) {
+            for (const p of ports) {
+              const publicPort = p.PublicPort || p.publicPort;
+              const privatePort = p.PrivatePort || p.privatePort;
+
+              if (publicPort === targetPort || privatePort === targetPort) {
+                const ownerContainer = normalizedNames[0] || cId || 'otro contenedor';
+                const conflictType = publicPort === targetPort ? 'público' : 'privado';
+                return res.status(400).json({
+                  success: false,
+                  error: `El puerto ${targetPort} está en conflicto con el puerto ${conflictType} del contenedor "${ownerContainer}".`
+                });
+              }
+            }
+          }
+        }
+      } catch (dockerErr) {
+        console.warn('No se pudo verificar disponibilidad de puertos contra el socket de Docker:', dockerErr.message);
+      }
     }
 
     // Generar configuración con hasSsl y resolver 127.0.0.11 en ambos bloques

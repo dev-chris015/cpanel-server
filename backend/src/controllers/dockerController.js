@@ -40,6 +40,47 @@ export const deployContainer = async (req, res) => {
       });
     }
 
+    // Verificar si algún hostPort ya se encuentra en uso antes de crear el contenedor
+    const requestedHostPorts = [];
+    if (req.body.hostPort) {
+      const p = parseInt(req.body.hostPort, 10);
+      if (!isNaN(p)) requestedHostPorts.push(p);
+    }
+    if (Array.isArray(ports)) {
+      ports.forEach(portObj => {
+        const hp = portObj?.hostPort || portObj?.HostPort;
+        if (hp) {
+          const p = parseInt(hp, 10);
+          if (!isNaN(p) && !requestedHostPorts.includes(p)) {
+            requestedHostPorts.push(p);
+          }
+        }
+      });
+    }
+
+    if (requestedHostPorts.length > 0) {
+      try {
+        const existingContainers = await docker.listContainers({ all: true });
+        for (const container of existingContainers) {
+          const cPorts = container.Ports || container.ports || [];
+          for (const p of cPorts) {
+            const publicPort = p.PublicPort || p.publicPort;
+            if (publicPort && requestedHostPorts.includes(Number(publicPort))) {
+              const cName = (container.Names && container.Names[0])
+                ? container.Names[0].replace(/^\//, '')
+                : (container.Id ? container.Id.substring(0, 12) : 'desconocido');
+              return res.status(400).json({
+                success: false,
+                error: `El puerto host ${publicPort} ya se encuentra en uso por el contenedor "${cName}".`
+              });
+            }
+          }
+        }
+      } catch (dockerListErr) {
+        console.warn('Advertencia al verificar disponibilidad de hostPort en Docker:', dockerListErr.message);
+      }
+    }
+
     const deployed = await createAndDeployContainer({
       image,
       name,
