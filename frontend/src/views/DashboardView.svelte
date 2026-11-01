@@ -39,7 +39,7 @@
   let sshCopied = false;
   let copyTimeout = null;
 
-  const VNC_SSH_COMMAND = 'ssh -L 5901:localhost:5901 devchris@acarreados.dev';
+  const VNC_SSH_COMMAND = 'ssh -L 5901:localhost:5901 -i ~/vm-sor_key.pem azureuser@40.76.226.212';
 
   async function loadSystemMetrics() {
     try {
@@ -95,9 +95,8 @@
   $: stoppedCount = stoppedContainers.length;
   $: totalCount = containers.length;
 
-  // Desglose de discos (/ y /mnt)
+  // Desglose de disco (/)
   $: rootDisk = systemMetrics?.storage?.root;
-  $: mntDisk = systemMetrics?.storage?.mnt;
 
   // CPU normalizado
   $: cpuLoad = Number(systemMetrics?.cpu?.currentLoadPercent ?? 0);
@@ -165,15 +164,6 @@
         value="{rootDisk ? `${rootDisk.usedGb} / ${rootDisk.sizeGb} GB` : 'N/A'}"
         percent={rootDisk?.usePercent || 0}
         subtitle="{rootDisk?.availableGb != null ? `${rootDisk.availableGb} GB libres` : 'Sistema principal'}"
-        icon={HardDrive}
-      />
-
-      <!-- Disco Temporal /mnt -->
-      <MetricCard 
-        title="Disco Almacén (/mnt)"
-        value="{mntDisk ? `${mntDisk.usedGb} / ${mntDisk.sizeGb} GB` : 'No montado'}"
-        percent={mntDisk?.usePercent || 0}
-        subtitle="{mntDisk?.availableGb != null ? `${mntDisk.availableGb} GB libres` : 'Volumen secundario'}"
         icon={HardDrive}
       />
     </div>

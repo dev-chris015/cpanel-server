@@ -49,15 +49,22 @@
   let successMessage = '';
   let copiedLogs = false;
 
-  // Inicializar o actualizar estado al abrir el modal o cambiar el vhost
+  // Seguimiento del vhost anterior para detectar cambios de dominio
+  let lastVhostDomain = null;
+
+  // Inicializar o actualizar estado al abrir el modal o cuando cambie de dominio
   $: if (show && vhost) {
-    if (!email || email.startsWith('admin@')) {
+    if (vhost.domain !== lastVhostDomain) {
+      lastVhostDomain = vhost.domain;
       email = `admin@${vhost.domain || 'example.com'}`;
+      if (!isRunning && !isSuccess) {
+        resetState();
+      }
     }
-    // Si no está corriendo una operación y no terminó con éxito, reiniciar estados visuales
-    if (!isRunning && !isSuccess) {
-      resetState();
-    }
+  }
+
+  $: if (!show) {
+    lastVhostDomain = null;
   }
 
   function resetState() {
