@@ -140,6 +140,14 @@ export const createSchema = async (dbName, options = {}) => {
     throw new Error(`Operación denegada: "${dbName}" es un nombre reservado para esquemas del sistema.`);
   }
 
+  // Validación de contenedor: Si se asocia a un contenedor/sitio, verificar que no tenga ya una BD vinculada
+  if (options.site && options.site !== 'independent') {
+    const siteCheck = await checkContainerDatabase(options.site);
+    if (siteCheck.hasDatabase) {
+      throw new Error(`El contenedor o sitio "${options.site}" ya tiene una base de datos vinculada ("${siteCheck.databaseName}"). No se permite asociar más de una base de datos por contenedor.`);
+    }
+  }
+
   const charset = options.charset || 'utf8mb4';
   const collation = options.collation || 'utf8mb4_unicode_ci';
 
@@ -223,6 +231,89 @@ export const listSchemas = async () => {
 };
 
 /**
+ * Comprueba si un contenedor o sitio ya tiene una base de datos vinculada o asignada.
+ * Revisa:
+ * 1. Variables de entorno en contenedores de Docker (WORDPRESS_DB_NAME, DB_NAME, MYSQL_DATABASE).
+ * 2. Convención estándar wp_site_<id> -> wp_db_<id>.
+ * 3. Coincidencia entre el nombre del sitio y esquemas existentes en MariaDB.
+ *
+ * @param {string} siteName - Nombre del contenedor o sitio
+ * @param {Array<object>} existingSchemas - Lista opcional de esquemas existentes [{ name: string }]
+ * @returns {Promise<{ hasDatabase: boolean, databaseName?: string, containerName?: string }>}
+ */
+export const checkContainerDatabase = async (siteName, existingSchemas = null) => {
+  if (!siteName || typeof siteName !== 'string' || siteName === 'independent') {
+    return { hasDatabase: false };
+  }
+
+  const cleanSite = siteName.trim().replace(/^\//, '').toLowerCase();
+
+  // 1. Obtener esquemas existentes si no fueron suministrados
+  let currentSchemas = existingSchemas;
+  if (!currentSchemas) {
+    try {
+      currentSchemas = await listSchemas();
+    } catch (err) {
+      currentSchemas = [];
+    }
+  }
+  const existingNames = currentSchemas.map(s => s.name ? s.name.toLowerCase() : String(s).toLowerCase());
+
+  // 2. Comprobar convención wp_site_<id> -> wp_db_<id>
+  const wpSiteMatch = cleanSite.match(/^wp_site_(.+)$/);
+  if (wpSiteMatch) {
+    const expectedDb = `wp_db_${wpSiteMatch[1]}`.toLowerCase();
+    if (existingNames.includes(expectedDb)) {
+      return {
+        hasDatabase: true,
+        databaseName: expectedDb,
+        containerName: cleanSite
+      };
+    }
+  }
+
+  // 3. Inspeccionar contenedor Docker en tiempo real para variables de entorno
+  try {
+    const containers = await docker.listContainers({ all: true });
+    const target = containers.find(c => {
+      const names = Array.isArray(c.Names) ? c.Names : [];
+      return names.some(n => n.replace(/^\//, '').toLowerCase() === cleanSite);
+    });
+
+    if (target) {
+      const inspectData = await docker.getContainer(target.Id).inspect();
+      const envs = inspectData?.Config?.Env || [];
+      for (const envStr of envs) {
+        const match = envStr.match(/^(?:WORDPRESS_DB_NAME|DB_NAME|MYSQL_DATABASE)=(.*)$/i);
+        if (match && match[1]) {
+          const dbFromEnv = match[1].trim();
+          if (dbFromEnv && existingNames.includes(dbFromEnv.toLowerCase())) {
+            return {
+              hasDatabase: true,
+              databaseName: dbFromEnv,
+              containerName: cleanSite
+            };
+          }
+        }
+      }
+    }
+  } catch (dockerErr) {
+    // Si docker no responde, continuar con chequeo de nombres
+  }
+
+  // 4. Comprobar coincidencia directa de nombre
+  if (existingNames.includes(cleanSite)) {
+    return {
+      hasDatabase: true,
+      databaseName: cleanSite,
+      containerName: cleanSite
+    };
+  }
+
+  return { hasDatabase: false };
+};
+
+/**
  * Crea una base de datos junto con su usuario MariaDB y asignación de todos los privilegios.
  * Ejecuta:
  * 1. CREATE DATABASE `<name>`
@@ -246,6 +337,14 @@ export const createDatabaseWithUser = async ({
   const cleanDbName = name.toLowerCase();
   if (SYSTEM_SCHEMAS.includes(cleanDbName)) {
     throw new Error(`Operación denegada: "${name}" es un nombre reservado para esquemas del sistema.`);
+  }
+
+  // Validación de contenedor: Si se asocia a un contenedor/sitio, verificar que no tenga ya una BD vinculada
+  if (site && site !== 'independent') {
+    const siteCheck = await checkContainerDatabase(site);
+    if (siteCheck.hasDatabase) {
+      throw new Error(`El contenedor o sitio "${site}" ya tiene una base de datos vinculada ("${siteCheck.databaseName}"). No se permite asociar más de una base de datos por contenedor.`);
+    }
   }
 
   let connection;
@@ -882,6 +981,7 @@ export default {
   sanitizePrivileges,
   getBackupDir,
   generateBackupTimestamp,
+  checkContainerDatabase,
   createSchema,
   createDatabaseWithUser,
   dropSchema,

@@ -98,7 +98,7 @@ router.post('/schemas', async (req, res) => {
       return res.status(201).json(result);
     }
 
-    const result = await createSchema(name, { charset, collation });
+    const result = await createSchema(name, { charset, collation, site });
     res.status(201).json(result);
   } catch (error) {
     console.error('Error al crear esquema en MariaDB:', error);

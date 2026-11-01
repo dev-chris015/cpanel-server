@@ -60,12 +60,32 @@
   let newSchemaPassword = '';
   let copiedGeneratedPassword = false;
 
+  // Mapa de contenedores/sitios que ya tienen una base de datos vinculada
+  $: siteDatabaseMap = (() => {
+    const map = new Map();
+    schemas.forEach(s => {
+      const assoc = getAssociatedSite(s.name);
+      if (assoc && assoc.name) {
+        map.set(assoc.name.toLowerCase(), s.name);
+      }
+    });
+    return map;
+  })();
+
   // Lista de sitios disponibles a partir de los contenedores
   $: availableSites = (containers || []).map(c => {
     const rawName = c.name || (c.Names && c.Names[0]) || '';
     const clean = rawName.replace(/^\//, '');
     return clean;
   }).filter(n => n && !['cpanel-backend', 'cpanel-frontend', 'nginx-proxy', 'mariadb', 'salones_db', 'tlya_redis'].includes(n));
+
+  // Sitios libres que no tienen base de datos asociada
+  $: freeSites = availableSites.filter(siteName => !siteDatabaseMap.has(siteName.toLowerCase()));
+
+  // Contenedor seleccionado en el formulario y su posible base de datos ya existente
+  $: selectedSiteExistingDb = selectedSite && selectedSite !== 'independent'
+    ? siteDatabaseMap.get(selectedSite.toLowerCase())
+    : null;
 
   function generateSecureDbPassword() {
     const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+~|}{[]';
@@ -242,6 +262,11 @@
   async function handleCreateSchema() {
     if (!selectedSite) {
       alert('Debes seleccionar un "Sitio / Contenedor Destino" o elegir "Independiente / Ninguno".');
+      return;
+    }
+
+    if (selectedSiteExistingDb) {
+      alert(`El contenedor "${selectedSite}" ya tiene la base de datos "${selectedSiteExistingDb}" asignada. No se permite asociar más de una base de datos por contenedor.`);
       return;
     }
 
@@ -977,7 +1002,11 @@
                 {#if availableSites.length > 0}
                   <optgroup label="Sitios / Contenedores en Ejecución">
                     {#each availableSites as siteName}
-                      <option value={siteName}>{siteName}</option>
+                      {@const hasDb = siteDatabaseMap.has(siteName.toLowerCase())}
+                      {@const assignedDbName = siteDatabaseMap.get(siteName.toLowerCase())}
+                      <option value={siteName} disabled={hasDb}>
+                        {siteName} {hasDb ? `(Ya tiene BD: ${assignedDbName})` : ''}
+                      </option>
                     {/each}
                   </optgroup>
                 {/if}
@@ -986,8 +1015,16 @@
                 </optgroup>
               </select>
             </div>
+            {#if selectedSiteExistingDb}
+              <div class="site-conflict-warning">
+                <AlertTriangle size={14} class="text-amber" />
+                <span>
+                  El contenedor <strong>{selectedSite}</strong> ya tiene asignada la base de datos <strong>{selectedSiteExistingDb}</strong>. Selecciona otro contenedor o elige "Independiente".
+                </span>
+              </div>
+            {/if}
             <span class="text-xs text-muted">
-              Al seleccionar un sitio (ej. <code>wp_site_4</code>), se autocompletarán la BD (<code>wp_db_4</code>) y el usuario (<code>wp_user_4</code>).
+              Al seleccionar un sitio disponible (ej. <code>wp_site_4</code>), se autocompletarán la BD (<code>wp_db_4</code>) y el usuario (<code>wp_user_4</code>).
             </span>
           </div>
 
@@ -1099,7 +1136,7 @@
             <button 
               type="submit" 
               class="btn-primary" 
-              disabled={actionLoading || !newSchemaName.trim() || !selectedSite}
+              disabled={actionLoading || !newSchemaName.trim() || !selectedSite || !!selectedSiteExistingDb}
             >
               {actionLoading ? 'Creando...' : 'Crear Base de Datos'}
             </button>
@@ -1777,6 +1814,23 @@
 
   .btn-copy-pass:hover {
     background: var(--card-border, #222225);
+    color: #ffffff;
+  }
+
+  .site-conflict-warning {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 8px;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.8rem;
+    color: #fde047;
+    margin-top: 0.4rem;
+  }
+
+  .site-conflict-warning strong {
     color: #ffffff;
   }
 
