@@ -129,7 +129,7 @@
     return list;
   })();
 
-  // Validación de disponibilidad de puertos (detecta colisión con otro contenedor)
+  // Validación de disponibilidad de puertos (detecta colisión de puerto público/host con otro contenedor)
   $: portConflict = (() => {
     if (useManualTarget) return null;
     const pStr = containerPort ? String(containerPort).trim() : '';
@@ -146,7 +146,7 @@
 
       if (Array.isArray(c.Ports)) {
         for (const p of c.Ports) {
-          if (p.PublicPort === portNum || p.PrivatePort === portNum) {
+          if (p.PublicPort === portNum) {
             return {
               port: pStr,
               ownerContainer: cName

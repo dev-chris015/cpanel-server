@@ -714,7 +714,7 @@ export const createOrUpdateVHost = async (req, res) => {
     }
 
     // 2. Validación de Puerto Libre en Backend
-    // Comprobar que el puerto no colisione con el puerto público o privado de otro contenedor en Docker
+    // Comprobar que el puerto no colisione con el puerto público de otro contenedor en el host de Docker
     if (targetPort && docker) {
       try {
         const containers = await docker.listContainers({ all: true });
@@ -738,14 +738,12 @@ export const createOrUpdateVHost = async (req, res) => {
           if (Array.isArray(ports)) {
             for (const p of ports) {
               const publicPort = p.PublicPort || p.publicPort;
-              const privatePort = p.PrivatePort || p.privatePort;
 
-              if (publicPort === targetPort || privatePort === targetPort) {
+              if (publicPort === targetPort) {
                 const ownerContainer = normalizedNames[0] || cId || 'otro contenedor';
-                const conflictType = publicPort === targetPort ? 'público' : 'privado';
                 return res.status(400).json({
                   success: false,
-                  error: `El puerto ${targetPort} está en conflicto con el puerto ${conflictType} del contenedor "${ownerContainer}".`
+                  error: `El puerto ${targetPort} está en conflicto con el puerto público del contenedor "${ownerContainer}".`
                 });
               }
             }

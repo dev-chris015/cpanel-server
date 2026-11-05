@@ -179,12 +179,12 @@ describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => 
   // Prueba 4: Rechazo HTTP 400 en createOrUpdateVHost ante asignación de puerto en colisión
   // ---------------------------------------------------------------------------
   test('Prueba 4: Rechazo HTTP 400 en createOrUpdateVHost ante asignación de puerto en colisión', async () => {
-    // Simular que el puerto 3000 de target 'other_service:3000' colisiona
-    const target = 'other_service:3000';
+    // Simular que el puerto 8081 de target 'other_service:8081' colisiona con el puerto público de another container
+    const target = 'other_service:8081';
     const targetPort = extractPortFromTarget(target);
     const targetHost = extractHostFromTarget(target);
 
-    assert.equal(targetPort, 3000);
+    assert.equal(targetPort, 8081);
     assert.equal(targetHost, 'other_service');
 
     // Simular lista de contenedores Docker donde otro contenedor ya ocupa el puerto 3000
@@ -203,7 +203,7 @@ describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => 
       if (cNames.includes(targetHost)) continue;
 
       for (const p of c.Ports) {
-        if (p.PrivatePort === targetPort || p.PublicPort === targetPort) {
+        if (p.PublicPort === targetPort) {
           conflictFound = true;
           conflictOwner = cNames[0];
           break;
@@ -218,7 +218,7 @@ describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => 
     const req = {
       body: {
         domain: 'unique-service.com',
-        target: 'other_service:3000'
+        target: 'other_service:8081'
       }
     };
 
@@ -239,13 +239,13 @@ describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => 
     if (conflictFound) {
       res.status(400).json({
         success: false,
-        error: `El puerto ${targetPort} está en conflicto con el puerto privado del contenedor "${conflictOwner}".`
+        error: `El puerto ${targetPort} está en conflicto con el puerto público del contenedor "${conflictOwner}".`
       });
     }
 
     assert.equal(statusCode, 400);
     assert.equal(responseBody.success, false);
-    assert.match(responseBody.error, /El puerto 3000 está en conflicto/);
+    assert.match(responseBody.error, /El puerto 8081 está en conflicto/);
   });
 
   // ---------------------------------------------------------------------------
