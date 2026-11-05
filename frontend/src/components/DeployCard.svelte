@@ -86,7 +86,7 @@
   export let imageName = '';
   export let containerName = '';
   export let hostPort = '';
-  export let containerPort = '';
+  export let containerPort = '3000';
 
   // Validación reactiva de colisión de puerto host contra contenedores activos
   $: portConflict = (() => {
@@ -415,7 +415,7 @@
           </div>
           
           <div class="field-group">
-            <label for="containerPort">Puerto Contenedor</label>
+            <label for="containerPort">Puerto Interno del Contenedor</label>
             <div class="input-group">
               <div class="input-icon">
                 <Server size={16} />
@@ -424,10 +424,12 @@
                 id="containerPort" 
                 type="number" 
                 bind:value={containerPort} 
-                placeholder="ej. 80" 
+                placeholder="3000" 
+                min="1"
+                max="65535"
               />
             </div>
-            <span class="help-text">Puerto interno expuesto por el servicio.</span>
+            <span class="help-text">Puerto interno donde escucha tu app (ej. 3000 para Node/Next, 80 para Nginx, 5000 para Python).</span>
           </div>
         </div>
 

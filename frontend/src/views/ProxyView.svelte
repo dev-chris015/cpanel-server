@@ -288,11 +288,15 @@
         const name = (c.name || c.Names?.[0] || '').replace(/^\//, '');
         return name === val || c.Id?.startsWith(val);
       });
+
+      const img = (match?.Image || '').toLowerCase();
+      const isWpOrWeb = img.includes('wordpress') || img.includes('nginx') || img.includes('apache') || img.includes('httpd');
+
       if (match?.Ports && match.Ports.length > 0) {
         const p = match.Ports[0].PrivatePort || match.Ports[0].PublicPort;
-        containerPort = p ? String(p) : '80';
+        containerPort = p ? String(p) : (isWpOrWeb ? '80' : '3000');
       } else {
-        containerPort = '80';
+        containerPort = isWpOrWeb ? '80' : '3000';
       }
     }
   }
@@ -503,9 +507,29 @@
             {#if portConflict}
               <div class="port-conflict-warning">
                 <AlertTriangle size={13} class="conflict-icon" />
-                <span>⚠️ El puerto {containerPort} ya está en uso por el contenedor "{portConflict.ownerContainer}".</span>
+                <span>⚠️ El puerto {containerPort} ya está en uso por el puerto público del contenedor "{portConflict.ownerContainer}".</span>
               </div>
             {/if}
+
+            <div class="port-quick-suggestions">
+              <span class="quick-label">Sugeridos:</span>
+              <button
+                type="button"
+                class="badge-port"
+                class:active={containerPort === '80'}
+                on:click={() => containerPort = '80'}
+              >
+                80 (Web / WP)
+              </button>
+              <button
+                type="button"
+                class="badge-port"
+                class:active={containerPort === '3000'}
+                on:click={() => containerPort = '3000'}
+              >
+                3000 (Node / Apps)
+              </button>
+            </div>
 
             {#if detectedPorts.length > 0}
               <div class="detected-ports-container">
@@ -1398,6 +1422,19 @@
     border-color: #0284c7;
     color: #38bdf8;
     font-weight: 600;
+  }
+
+  .port-quick-suggestions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  .quick-label {
+    font-size: 0.72rem;
+    color: var(--text-muted, #94a3b8);
   }
 
   .host-mapping {
