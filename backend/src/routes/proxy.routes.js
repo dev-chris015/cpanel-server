@@ -199,6 +199,94 @@ server {
 };
 
 /**
+ * Busca de forma dinámica y resiliente el contenedor de Nginx en Docker.
+ * Evalúa coincidencia directa por nombre configurado, o busca contenedores cuyo nombre
+ * o imagen coincidan con 'nginx-proxy', 'proxy' o 'nginx'.
+ */
+export const getNginxTarget = async (dockerInstance = docker) => {
+  if (!dockerInstance) {
+    return { container: null, status: 'no_docker', message: 'Docker no disponible' };
+  }
+
+  const configuredName = (process.env.NGINX_CONTAINER_NAME || NGINX_CONTAINER_NAME || 'nginx-proxy').trim();
+
+  // 1. Intento directo con el nombre configurado
+  try {
+    const directContainer = dockerInstance.getContainer(configuredName);
+    const inspect = await directContainer.inspect();
+    const state = (inspect?.State?.Status || inspect?.State?.status || '').toLowerCase();
+    const isRunning = inspect?.State?.Running === true;
+
+    return {
+      container: directContainer,
+      id: inspect.Id,
+      name: configuredName,
+      isRunning,
+      state: state || (isRunning ? 'running' : 'unknown'),
+      status: isRunning ? 'running' : 'stopped',
+      message: isRunning ? 'Contenedor en ejecución' : `El contenedor "${configuredName}" no está en ejecución (estado: ${state || 'detenido'}).`
+    };
+  } catch (_) {
+    // Si no se encuentra de forma directa, buscar dinámicamente
+  }
+
+  // 2. Búsqueda dinámica en listContainers
+  try {
+    const containers = await dockerInstance.listContainers({ all: true });
+    if (!Array.isArray(containers) || containers.length === 0) {
+      return { container: null, status: 'no_containers', message: 'No hay contenedores registrados en Docker.' };
+    }
+
+    // Prioridad A: Nombre exacto ignorando barra inicial y mayúsculas
+    let match = containers.find(c => {
+      const names = (c.Names || []).map(n => n.replace(/^\//, '').toLowerCase());
+      return names.includes(configuredName.toLowerCase());
+    });
+
+    // Prioridad B: Contenedor cuyo nombre contenga 'nginx-proxy' o 'proxy'
+    if (!match) {
+      match = containers.find(c => {
+        const names = (c.Names || []).map(n => n.replace(/^\//, '').toLowerCase());
+        return names.some(n => n.includes('nginx-proxy') || n.includes('proxy'));
+      });
+    }
+
+    // Prioridad C: Contenedor con imagen de nginx
+    if (!match) {
+      match = containers.find(c => {
+        const img = (c.Image || '').toLowerCase();
+        return img.startsWith('nginx') || img.includes('/nginx') || img.includes('nginx:');
+      });
+    }
+
+    if (!match) {
+      return {
+        container: null,
+        status: 'not_found',
+        message: `Contenedor "${configuredName}" no encontrado en Docker.`
+      };
+    }
+
+    const state = (match.State || match.state || '').toLowerCase();
+    const isRunning = state === 'running';
+    const container = dockerInstance.getContainer(match.Id);
+    const detectedName = (match.Names?.[0] || configuredName).replace(/^\//, '');
+
+    return {
+      container,
+      id: match.Id,
+      name: detectedName,
+      isRunning,
+      state: state || (isRunning ? 'running' : 'unknown'),
+      status: isRunning ? 'running' : 'stopped',
+      message: isRunning ? 'Contenedor en ejecución' : `El contenedor de Nginx ("${detectedName}") no está en ejecución (estado: ${state || 'detenido'}).`
+    };
+  } catch (err) {
+    return { container: null, status: 'error', message: err.message };
+  }
+};
+
+/**
  * Ejecuta 'nginx -t' para comprobar la sintaxis de la configuración.
  * Intenta ejecutarlo primero localmente en el host/contenedor; si no está disponible,
  * lo ejecuta dentro del contenedor Docker de Nginx.
@@ -218,9 +306,11 @@ export const testNginxConfig = async () => {
 
     // Si nginx existe pero falló la sintaxis
     if (!isNotFound) {
+      const errText = (localErr.stderr || localErr.stdout || localErr.message).trim();
       return {
         success: false,
-        error: (localErr.stderr || localErr.stdout || localErr.message).trim(),
+        error: errText,
+        output: errText,
         method: 'local'
       };
     }
@@ -228,15 +318,34 @@ export const testNginxConfig = async () => {
 
   // 2. Probar en contenedor Docker de Nginx
   try {
-    const containerName = process.env.NGINX_CONTAINER_NAME || NGINX_CONTAINER_NAME || 'nginx-proxy';
-    const container = docker.getContainer(containerName);
-    const execInstance = await container.exec({
+    const target = await getNginxTarget(docker);
+
+    if (!target.container || !target.isRunning) {
+      if (target.status === 'stopped') {
+        return {
+          success: false,
+          error: target.message,
+          output: `Contenedor "${target.name}" detenido.`,
+          method: 'docker'
+        };
+      }
+      // Entorno de desarrollo o pruebas sin Nginx activo
+      return {
+        success: true,
+        simulated: true,
+        output: `Prueba sintáctica simulada: Nginx no disponible en este entorno (${target.message})`,
+        method: 'simulated'
+      };
+    }
+
+    const execInstance = await target.container.exec({
       Cmd: ['nginx', '-t'],
       AttachStdout: true,
-      AttachStderr: true
+      AttachStderr: true,
+      Tty: true
     });
 
-    const stream = await execInstance.start({});
+    const stream = await execInstance.start({ Tty: true });
     let output = '';
 
     await new Promise((resolve) => {
@@ -248,21 +357,23 @@ export const testNginxConfig = async () => {
     });
 
     const inspectData = await execInstance.inspect();
+    const cleanOutput = output.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
+
     if (inspectData.ExitCode === 0) {
       return {
         success: true,
-        output: output.trim(),
+        output: cleanOutput,
         method: 'docker'
       };
     } else {
       return {
         success: false,
-        error: output.trim() || 'Fallo en la prueba de sintaxis (nginx -t) dentro del contenedor.',
+        error: cleanOutput || 'Fallo en la prueba de sintaxis (nginx -t) dentro del contenedor.',
+        output: cleanOutput,
         method: 'docker'
       };
     }
   } catch (dockerErr) {
-    // Si no se encuentra ni local ni Docker, registramos aviso y retornamos éxito simulado en entorno dev
     console.warn('nginx -t no pudo ejecutarse directamente ni en contenedor:', dockerErr.message);
     return {
       success: true,
@@ -274,10 +385,24 @@ export const testNginxConfig = async () => {
 };
 
 /**
- * Recarga la configuración de Nginx (nginx -s reload).
+ * Recarga la configuración de Nginx (nginx -s reload o señal SIGHUP).
+ * Valida previamente la sintaxis para prevenir cortes y utiliza señal directa si 'nginx -s reload' falla.
  */
-export const reloadNginx = async () => {
-  // 1. Recargar localmente si está disponible
+export const reloadNginx = async ({ skipTest = false } = {}) => {
+  // 1. Validar sintaxis previa con testNginxConfig si no fue omitido
+  if (!skipTest) {
+    const syntaxTest = await testNginxConfig();
+    if (!syntaxTest.success) {
+      return {
+        success: false,
+        error: syntaxTest.error || 'Error sintáctico detectado en la configuración de Nginx.',
+        output: syntaxTest.output || syntaxTest.error,
+        method: syntaxTest.method
+      };
+    }
+  }
+
+  // 2. Recargar localmente si está disponible
   try {
     const { stdout, stderr } = await execAsync('nginx -s reload');
     return {
@@ -289,25 +414,46 @@ export const reloadNginx = async () => {
     const isNotFound = localErr.code === 127 ||
       (localErr.message && (localErr.message.includes('not found') || localErr.message.includes('ENOENT')));
     if (!isNotFound) {
+      const errText = (localErr.stderr || localErr.stdout || localErr.message).trim();
       return {
         success: false,
-        error: (localErr.stderr || localErr.stdout || localErr.message).trim(),
+        error: errText,
+        output: errText,
         method: 'local'
       };
     }
   }
 
-  // 2. Recargar en contenedor Docker
+  // 3. Recargar en contenedor Docker
   try {
-    const containerName = process.env.NGINX_CONTAINER_NAME || NGINX_CONTAINER_NAME || 'nginx-proxy';
-    const container = docker.getContainer(containerName);
-    const execInstance = await container.exec({
+    const target = await getNginxTarget(docker);
+
+    if (!target.container || !target.isRunning) {
+      if (target.status === 'stopped') {
+        return {
+          success: false,
+          error: target.message,
+          output: `Contenedor "${target.name}" detenido.`,
+          method: 'docker'
+        };
+      }
+      return {
+        success: true,
+        simulated: true,
+        output: `Recarga simulada: ${target.message}`,
+        method: 'simulated'
+      };
+    }
+
+    // 3.a Intentar recarga estándar con 'nginx -s reload'
+    const execInstance = await target.container.exec({
       Cmd: ['nginx', '-s', 'reload'],
       AttachStdout: true,
-      AttachStderr: true
+      AttachStderr: true,
+      Tty: true
     });
 
-    const stream = await execInstance.start({});
+    const stream = await execInstance.start({ Tty: true });
     let output = '';
     await new Promise((resolve) => {
       stream.on('data', (chunk) => { output += chunk.toString('utf8'); });
@@ -316,11 +462,33 @@ export const reloadNginx = async () => {
     });
 
     const inspectData = await execInstance.inspect();
-    return {
-      success: inspectData.ExitCode === 0,
-      output: output.trim(),
-      method: 'docker'
-    };
+    const cleanOutput = output.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
+
+    if (inspectData.ExitCode === 0) {
+      return {
+        success: true,
+        output: cleanOutput || 'Nginx recargado exitosamente sin cortes de servicio.',
+        method: 'docker'
+      };
+    }
+
+    // 3.b Fallback: Si 'nginx -s reload' falló (ej. por archivo pid faltante en alpine),
+    // enviar señal directa SIGHUP (PID 1) al contenedor de Nginx
+    try {
+      await target.container.kill({ signal: 'HUP' });
+      return {
+        success: true,
+        output: (cleanOutput ? `${cleanOutput}\n` : '') + 'Nginx recargado exitosamente mediante señal SIGHUP al proceso maestro.',
+        method: 'docker-signal'
+      };
+    } catch (killErr) {
+      return {
+        success: false,
+        error: cleanOutput || killErr.message || 'Error al ejecutar recarga de Nginx en el contenedor.',
+        output: cleanOutput,
+        method: 'docker'
+      };
+    }
   } catch (dockerErr) {
     return {
       success: true,
@@ -378,7 +546,7 @@ export const applyVHostWithAtomicRollback = async ({
     }
 
     // 4. Si el 1er test fue exitoso, recargar Nginx
-    const reloadResult = await reloadRunner();
+    const reloadResult = await reloadRunner({ skipTest: true });
 
     return {
       applied: true,
@@ -447,7 +615,7 @@ export const deleteVHostWithAtomicRollback = async (
     };
   }
 
-  await reloadRunner();
+  await reloadRunner({ skipTest: true });
 
   return {
     deleted: true,
@@ -1092,11 +1260,16 @@ export const getCertStatus = async (req, res) => {
  * POST /api/proxy/test
  * Ejecutar verificación sintáctica de Nginx manualmente (nginx -t).
  */
-const testNginx = async (req, res) => {
+export const testNginx = async (req, res) => {
   try {
     const testResult = await testNginxConfig();
-    res.json({
+    const statusCode = testResult.success ? 200 : 400;
+    res.status(statusCode).json({
       success: testResult.success,
+      message: testResult.success
+        ? 'Sintaxis de configuración de Nginx correcta.'
+        : 'Error sintáctico detectado en la configuración de Nginx.',
+      error: testResult.error,
       output: testResult.output || testResult.error,
       method: testResult.method,
       simulated: Boolean(testResult.simulated)
@@ -1112,14 +1285,19 @@ const testNginx = async (req, res) => {
 
 /**
  * POST /api/proxy/reload
- * Recargar configuración de Nginx manualmente (nginx -s reload).
+ * Recargar configuración de Nginx manualmente (nginx -s reload o señal SIGHUP).
  */
-const reloadNginxHandler = async (req, res) => {
+export const reloadNginxHandler = async (req, res) => {
   try {
     const reloadResult = await reloadNginx();
-    res.json({
+    const statusCode = reloadResult.success ? 200 : 500;
+    res.status(statusCode).json({
       success: reloadResult.success,
-      output: reloadResult.output || reloadResult.error,
+      message: reloadResult.success
+        ? 'Nginx se ha recargado exitosamente sin cortes de servicio.'
+        : 'No se pudo recargar la configuración de Nginx.',
+      error: reloadResult.error || (!reloadResult.success ? (reloadResult.output || 'Fallo al recargar Nginx') : undefined),
+      output: reloadResult.output,
       method: reloadResult.method,
       simulated: Boolean(reloadResult.simulated)
     });

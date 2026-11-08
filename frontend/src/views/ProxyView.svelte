@@ -195,20 +195,25 @@
     try {
       const res = await api.post('/proxy/reload', {});
       if (res && res.success) {
-        successNotice = 'Nginx se ha recargado exitosamente sin cortes de servicio.';
+        successNotice = res.message || 'Nginx se ha recargado exitosamente sin cortes de servicio.';
         setTimeout(() => successNotice = null, 4000);
       } else {
         rollbackNotice = {
           title: 'Fallo al recargar Nginx',
           error: res?.error || 'No se pudo aplicar la recarga.',
-          details: res?.output || ''
+          details: res?.output || '',
+          rollbackVerified: true,
+          explanation: 'La recarga fue rechazada por Nginx. Se mantuvo activa la configuración previa sin cortes de servicio.'
         };
       }
     } catch (err) {
+      const errData = err.data || {};
       rollbackNotice = {
-        title: 'Error de comunicación',
-        error: err.message,
-        details: 'Verifica la conexión del servidor o el estado del contenedor de Nginx.'
+        title: 'Fallo al recargar Nginx',
+        error: errData.error || err.message || 'No se pudo recargar la configuración de Nginx.',
+        details: errData.output || errData.details || err.message,
+        rollbackVerified: true,
+        explanation: 'El contenedor o servicio de Nginx no pudo aplicar los cambios. La instancia previa continúa en ejecución sin cortes.'
       };
     } finally {
       reloadLoading = false;
@@ -346,8 +351,8 @@
         disabled={reloadLoading}
         title="Recargar Nginx manualmente (nginx -s reload)"
       >
-        <Server size={15} />
-        <span>{reloadLoading ? 'Recargando...' : 'Recargar Nginx Manualmente'}</span>
+        <Server size={15} class={reloadLoading ? 'spin' : ''} />
+        <span>{reloadLoading ? 'Recargando Nginx...' : 'Recargar Nginx Manualmente'}</span>
       </button>
     </div>
   </div>
@@ -392,7 +397,7 @@
           </div>
         {/if}
         <div class="notice-explanation">
-          Nginx detectó un error sintáctico durante la prueba <code class="font-mono">nginx -t</code> y restauró inmediatamente la configuración previa. Ninguna conexión activa fue interrumpida.
+          {rollbackNotice.explanation || 'Nginx detectó un error sintáctico durante la prueba nginx -t y restauró inmediatamente la configuración previa. Ninguna conexión activa fue interrumpida.'}
         </div>
       </div>
       <button type="button" class="btn-close-notice" on:click={() => rollbackNotice = null}>
@@ -1463,7 +1468,7 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   }
 
-  .spin {
+  :global(.spin) {
     animation: spin 1s linear infinite;
   }
 

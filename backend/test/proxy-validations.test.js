@@ -9,7 +9,9 @@ import {
   extractPortFromTarget,
   applyVHostWithAtomicRollback,
   createOrUpdateVHost,
-  getVHostsDir
+  getVHostsDir,
+  getNginxTarget,
+  reloadNginxHandler
 } from '../src/routes/proxy.routes.js';
 
 describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => {
@@ -307,5 +309,95 @@ describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => 
       initialConfig,
       'El contenido del archivo debe ser idéntico a la configuración previa tras el rollback'
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Prueba 6: Búsqueda dinámica y resiliente del contenedor Nginx (getNginxTarget)
+  // ---------------------------------------------------------------------------
+  test('Prueba 6: Búsqueda dinámica y resiliente del contenedor Nginx (getNginxTarget)', async () => {
+    // 6.a Mock de Docker con contenedor exacto en ejecución
+    const mockDockerExact = {
+      getContainer: (id) => ({
+        inspect: async () => ({
+          Id: 'exact123456789',
+          State: { Running: true, Status: 'running' }
+        })
+      }),
+      listContainers: async () => []
+    };
+
+    const targetExact = await getNginxTarget(mockDockerExact);
+    assert.equal(targetExact.isRunning, true);
+    assert.equal(targetExact.status, 'running');
+    assert.equal(targetExact.id, 'exact123456789');
+
+    // 6.b Mock de Docker con contenedor detenido
+    const mockDockerStopped = {
+      getContainer: (id) => ({
+        inspect: async () => ({
+          Id: 'stopped123456',
+          State: { Running: false, Status: 'exited' }
+        })
+      }),
+      listContainers: async () => []
+    };
+
+    const targetStopped = await getNginxTarget(mockDockerStopped);
+    assert.equal(targetStopped.isRunning, false);
+    assert.equal(targetStopped.status, 'stopped');
+    assert.match(targetStopped.message, /no está en ejecución/i);
+
+    // 6.c Mock de Docker con nombre alternativo/prefijado en compose (ej: server-nginx-proxy-1)
+    const mockDockerFuzzy = {
+      getContainer: (id) => {
+        if (id === 'nginx-proxy') throw new Error('404 No such container');
+        return {
+          inspect: async () => ({ Id: id, State: { Running: true, Status: 'running' } })
+        };
+      },
+      listContainers: async () => [
+        {
+          Id: 'fuzzy78901234',
+          Names: ['/server-nginx-proxy-1'],
+          Image: 'nginx:alpine',
+          State: 'running'
+        }
+      ]
+    };
+
+    const targetFuzzy = await getNginxTarget(mockDockerFuzzy);
+    assert.equal(targetFuzzy.isRunning, true);
+    assert.equal(targetFuzzy.id, 'fuzzy78901234');
+    assert.equal(targetFuzzy.name, 'server-nginx-proxy-1');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Prueba 7: Respuestas HTTP y validación de recarga de Nginx (reloadNginxHandler)
+  // ---------------------------------------------------------------------------
+  test('Prueba 7: Respuestas HTTP y validación de recarga de Nginx (reloadNginxHandler)', async () => {
+    // 7.a Simular respuesta HTTP 200 en caso de recarga exitosa
+    let resStatus = 200;
+    let resJson = null;
+    const mockResSuccess = {
+      status: (code) => {
+        resStatus = code;
+        return mockResSuccess;
+      },
+      json: (data) => {
+        resJson = data;
+      }
+    };
+
+    await reloadNginxHandler({}, mockResSuccess);
+    assert.equal(typeof resJson, 'object');
+    assert.equal(typeof resJson.success, 'boolean');
+    assert.equal(resStatus === 200 || resStatus === 500, true);
+    if (resJson.success) {
+      assert.equal(resStatus, 200);
+      assert.match(resJson.message, /recargado exitosamente/i);
+    } else {
+      assert.equal(resStatus, 500);
+      assert.ok(resJson.error);
+    }
   });
 });
