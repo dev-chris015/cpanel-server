@@ -51,6 +51,47 @@
     lastWpName = wpContainerName;
   }
 
+  // Detección automática de la imagen de WordPress en uso por los contenedores existentes
+  $: detectedWpImage = (() => {
+    if (!Array.isArray(containers) || containers.length === 0) return 'wordpress:latest';
+    const wp = containers.find(c => {
+      const img = (c.Image || c.image || '').toLowerCase();
+      const names = (c.Names || (c.name ? [c.name] : [])).map(n => n.replace(/^\//, '').toLowerCase());
+      return img.includes('wordpress') || names.some(n => n.startsWith('wp_') || n.includes('wordpress'));
+    });
+    return wp ? (wp.Image || wp.image || 'wordpress:latest') : 'wordpress:latest';
+  })();
+
+  $: wpImage = detectedWpImage || 'wordpress:latest';
+
+  // Detección del siguiente correlativo numérico libre para sitios WordPress
+  $: nextWpIndex = (() => {
+    if (!Array.isArray(containers) || containers.length === 0) return 4;
+    let maxNum = 3;
+    containers.forEach(c => {
+      const names = (c.Names || (c.name ? [c.name] : [])).map(n => n.replace(/^\//, ''));
+      names.forEach(name => {
+        const m = name.match(/wp(?:_site)?_(\d+)/i) || name.match(/sitio(\d+)/i);
+        if (m && m[1]) {
+          const num = parseInt(m[1], 10);
+          if (!isNaN(num) && num > maxNum) {
+            maxNum = num;
+          }
+        }
+      });
+    });
+    return maxNum + 1;
+  })();
+
+  let initializedIndex = false;
+  $: if (!initializedIndex && nextWpIndex && wpContainerName === 'wp_site_4') {
+    wpContainerName = `wp_site_${nextWpIndex}`;
+    wpDbName = `wp_db_${nextWpIndex}`;
+    wpDbUser = `wp_user_${nextWpIndex}`;
+    lastWpName = wpContainerName;
+    initializedIndex = true;
+  }
+
   // Opciones automáticas calculadas no editables
   $: calculatedVolume = `wp_data_${wpContainerName.trim() || 'default'}:/var/www/html`;
   const WP_DB_HOST = 'mariadb:3306';
@@ -131,7 +172,7 @@
     if (activeTab === 'wordpress') {
       const payload = {
         type: 'wordpress',
-        image: 'wordpress:latest',
+        image: wpImage,
         name: wpContainerName.trim(),
         network: WP_NETWORK,
         binds: [`wp_data_${wpContainerName.trim()}:/var/www/html`],
@@ -139,10 +180,12 @@
           `WORDPRESS_DB_HOST=${WP_DB_HOST}`,
           `WORDPRESS_DB_NAME=${wpDbName.trim()}`,
           `WORDPRESS_DB_USER=${wpDbUser.trim()}`,
-          `WORDPRESS_DB_PASSWORD=${wpDbPassword.trim()}`
+          `WORDPRESS_DB_PASSWORD=${wpDbPassword.trim()}`,
+          "WORDPRESS_CONFIG_EXTRA=define('FS_METHOD', 'direct');"
         ],
         wordpressConfig: {
           containerName: wpContainerName.trim(),
+          image: wpImage,
           dbName: wpDbName.trim(),
           dbUser: wpDbUser.trim(),
           dbPassword: wpDbPassword.trim(),
@@ -331,6 +374,11 @@
           </div>
           
           <div class="preset-tags-grid">
+            <div class="preset-tag">
+              <span class="tag-label"><Layers size={13} /> Imagen:</span>
+              <span class="tag-value font-mono">{wpImage}</span>
+            </div>
+
             <div class="preset-tag">
               <span class="tag-label">DB Host:</span>
               <span class="tag-value font-mono">WORDPRESS_DB_HOST={WP_DB_HOST}</span>

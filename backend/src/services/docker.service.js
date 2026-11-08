@@ -179,9 +179,20 @@ export const resolvePersistentVolumes = async ({ binds = [], volumes = [], conta
 };
 
 /**
- * Descarga una imagen de Docker si no está presente localmente o reporta progreso.
+ * Descarga una imagen de Docker si no está presente localmente o reutiliza la existente en caché.
  */
 export const pullImageIfNeeded = async (image) => {
+  // 1. Verificar si la imagen ya existe localmente en el daemon de Docker
+  try {
+    const localImg = docker.getImage(image);
+    await localImg.inspect();
+    // La imagen ya existe localmente; reutilizar exactamente la misma versión
+    return { local: true, image };
+  } catch (_) {
+    // Si no está disponible localmente, proceder a descargarla
+  }
+
+  // 2. Si no existe en el host, descargarla desde el registro
   return new Promise((resolve, reject) => {
     docker.pull(image, (err, stream) => {
       if (err) return reject(err);
@@ -245,7 +256,8 @@ export const createAndDeployContainer = async ({
     PortBindings,
     AutoRemove: false,
     NetworkMode: targetNetwork,
-    Binds: resolvedBinds
+    Binds: resolvedBinds,
+    RestartPolicy: { Name: 'always' }
   };
 
   const containerOptions = {

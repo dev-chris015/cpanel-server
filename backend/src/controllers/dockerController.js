@@ -82,9 +82,42 @@ export const deployContainer = async (req, res) => {
       }
     }
 
+    // Si es un despliegue de WordPress, asegurar paridad con la imagen de WordPress en uso
+    const wpCfg = req.body.wordpressConfig;
+    const isWp = req.body.type === 'wordpress' || Boolean(wpCfg) || /^(?:wp|wordpress)/i.test(name || '');
+
+    if (isWp) {
+      if (!image) {
+        image = 'wordpress:latest';
+      }
+      try {
+        const containersList = await docker.listContainers({ all: true });
+        const existingWp = containersList.find(c => {
+          const cImg = (c.Image || '').toLowerCase();
+          const names = (c.Names || []).map(n => n.replace(/^\//, '').toLowerCase());
+          return cImg.includes('wordpress') || names.some(n => n.startsWith('wp_') || n.includes('wordpress'));
+        });
+        if (existingWp && existingWp.Image) {
+          // Reutilizar exactamente la misma imagen de WordPress usada por los demás sitios
+          if (!req.body.image || req.body.image === 'wordpress:latest' || req.body.image === 'wordpress') {
+            image = existingWp.Image;
+          }
+        }
+      } catch (detectErr) {
+        console.warn('Aviso al detectar imagen de WordPress existente:', detectErr.message);
+      }
+
+      // Asegurar que WORDPRESS_CONFIG_EXTRA con FS_METHOD direct esté presente para evitar solicitud de FTP
+      if (Array.isArray(env)) {
+        const hasConfigExtra = env.some(e => typeof e === 'string' && e.startsWith('WORDPRESS_CONFIG_EXTRA='));
+        if (!hasConfigExtra) {
+          env.push("WORDPRESS_CONFIG_EXTRA=define('FS_METHOD', 'direct');");
+        }
+      }
+    }
+
     // Si el payload viene de creación de WordPress con configuración de base de datos
     let dbCreationResult = null;
-    const wpCfg = req.body.wordpressConfig;
     if (wpCfg && wpCfg.dbName && wpCfg.dbUser && wpCfg.dbPassword) {
       try {
         dbCreationResult = await createDatabaseWithUser({
