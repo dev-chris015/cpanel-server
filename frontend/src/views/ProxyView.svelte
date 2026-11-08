@@ -129,7 +129,7 @@
     return list;
   })();
 
-  // Validación de disponibilidad de puertos (detecta colisión de puerto público/host con otro contenedor)
+  // Validación de disponibilidad de puertos (detecta colisión de puerto público/host con otro contenedor de aplicaciones)
   $: portConflict = (() => {
     if (useManualTarget) return null;
     const pStr = containerPort ? String(containerPort).trim() : '';
@@ -137,10 +137,18 @@
     const portNum = parseInt(pStr, 10);
     if (!portNum || isNaN(portNum)) return null;
 
+    // Contenedores del sistema proxy/cpanel cuyo puerto público 80/443 no debe ser marcado como colisión para upstreams
+    const SYSTEM_PROXIES = ['nginx-proxy', 'nginx', 'cpanel-backend', 'cpanel-frontend'];
+
     for (const c of runningContainers) {
       const cName = (c.name || c.Names?.[0] || '').replace(/^\//, '') || c.Id?.slice(0, 12);
       // Ignorar el contenedor seleccionado que se está configurando
       if (selectedContainer && (cName === selectedContainer || c.Id?.startsWith(selectedContainer))) {
+        continue;
+      }
+
+      // Ignorar contenedores proxy del sistema
+      if (SYSTEM_PROXIES.includes(cName.toLowerCase())) {
         continue;
       }
 

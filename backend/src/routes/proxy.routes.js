@@ -744,7 +744,16 @@ export const createOrUpdateVHost = async (req, res) => {
     }
 
     // 2. Validación de Puerto Libre en Backend
-    // Comprobar que el puerto no colisione con el puerto público de otro contenedor en el host de Docker
+    // Comprobar que el puerto no colisione con el puerto público de otro contenedor en el host de Docker.
+    // Se excluyen los proxies inversos/balanceadores del sistema (como nginx-proxy) ya que ellos legítimamente
+    // publican los puertos 80 y 443 en el host para recibir el tráfico de todos los vhosts hacia los upstreams.
+    const SYSTEM_PROXY_CONTAINERS = [
+      'nginx-proxy',
+      'nginx',
+      'cpanel-backend',
+      process.env.NGINX_CONTAINER_NAME || NGINX_CONTAINER_NAME
+    ].filter(Boolean).map(s => s.toLowerCase());
+
     if (targetPort && docker) {
       try {
         const containers = await docker.listContainers({ all: true });
@@ -753,7 +762,7 @@ export const createOrUpdateVHost = async (req, res) => {
           const normalizedNames = cNames.map(n => n.replace(/^\//, '').toLowerCase());
           const cId = (c.Id || '').substring(0, 12).toLowerCase();
 
-          // Si el contenedor inspeccionado es el mismo del targetHost, no cuenta como "otro" contenedor
+          // Si el contenedor es el mismo del targetHost, ignorar
           const isSameContainer = targetHost && (
             normalizedNames.includes(targetHost) ||
             cId === targetHost ||
@@ -761,6 +770,13 @@ export const createOrUpdateVHost = async (req, res) => {
           );
 
           if (isSameContainer) {
+            continue;
+          }
+
+          // Si el contenedor es el propio proxy inverso del sistema (nginx-proxy), sus puertos públicos 80/443
+          // no son un conflicto para los contenedores internos que escuchan en puerto 80 dentro de server-net.
+          const isSystemProxy = normalizedNames.some(n => SYSTEM_PROXY_CONTAINERS.includes(n));
+          if (isSystemProxy) {
             continue;
           }
 
