@@ -11,7 +11,8 @@ import {
   createOrUpdateVHost,
   getVHostsDir,
   getNginxTarget,
-  reloadNginxHandler
+  reloadNginxHandler,
+  resolveCertbotHostPaths
 } from '../src/routes/proxy.routes.js';
 
 describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => {
@@ -398,6 +399,58 @@ describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => 
     } else {
       assert.equal(resStatus, 500);
       assert.ok(resJson.error);
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Prueba 8: Resolución dinámica de rutas host para Certbot (resolveCertbotHostPaths)
+  // ---------------------------------------------------------------------------
+  test('Prueba 8: Resolución dinámica de rutas host para Certbot (resolveCertbotHostPaths)', async () => {
+    // 8.a Resolución mediante inspección de montajes de Docker (emulando VM remota)
+    const mockDockerWithMounts = {
+      getContainer: (id) => ({
+        inspect: async () => ({
+          Id: id,
+          State: { Running: true, Status: 'running' },
+          Mounts: [
+            {
+              Type: 'bind',
+              Source: '/home/azureuser/server/certbot/conf',
+              Destination: '/etc/letsencrypt'
+            },
+            {
+              Type: 'bind',
+              Source: '/home/azureuser/server/certbot/www',
+              Destination: '/var/www/certbot'
+            }
+          ]
+        })
+      }),
+      listContainers: async () => [
+        {
+          Id: 'nginx12345',
+          Names: ['/nginx-proxy'],
+          State: 'running'
+        }
+      ]
+    };
+
+    const resolved = await resolveCertbotHostPaths(mockDockerWithMounts);
+    assert.equal(resolved.hostCertsDir, '/home/azureuser/server/certbot/conf');
+    assert.equal(resolved.hostWebrootDir, '/home/azureuser/server/certbot/www');
+    assert.equal(resolved.source, 'docker_mount_inspection');
+
+    // 8.b Override mediante variables de entorno
+    process.env.HOST_CERTS_DIR = '/custom/host/certs';
+    process.env.HOST_WEBROOT_DIR = '/custom/host/www';
+    try {
+      const resolvedEnv = await resolveCertbotHostPaths(mockDockerWithMounts);
+      assert.equal(resolvedEnv.hostCertsDir, '/custom/host/certs');
+      assert.equal(resolvedEnv.hostWebrootDir, '/custom/host/www');
+      assert.equal(resolvedEnv.source, 'environment');
+    } finally {
+      delete process.env.HOST_CERTS_DIR;
+      delete process.env.HOST_WEBROOT_DIR;
     }
   });
 });

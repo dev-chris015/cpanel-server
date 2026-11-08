@@ -2,8 +2,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Instalar Nginx para validación sintáctica (nginx -t) y cliente MariaDB para mariadb-dump
-RUN apk add --no-cache nginx mariadb-client
+# Instalar Nginx para validación sintáctica (nginx -t), cliente MariaDB, docker-cli, certbot y openssl
+RUN apk add --no-cache nginx mariadb-client docker-cli certbot openssl
 
 COPY package*.json ./
 

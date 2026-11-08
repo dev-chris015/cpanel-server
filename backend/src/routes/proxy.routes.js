@@ -105,6 +105,7 @@ export const generateVHostConfig = ({
 # Bloque 1: HTTP (Puerto 80) - Redirección a HTTPS y validación ACME
 server {
     listen 80;
+    listen [::]:80;
     server_name ${cleanDomain};
 
     # Resolver DNS interno de Docker en bloque HTTP
@@ -125,6 +126,8 @@ server {
 # Bloque 2: HTTPS (Puerto 443) - Proxy Inverso seguro
 server {
     listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name ${cleanDomain};
 
     # Resolver DNS interno de Docker en bloque HTTPS
@@ -669,7 +672,9 @@ export const checkCertificateExists = (domain) => {
   const potentialPaths = [
     path.join(certsBase, 'live', cleanDomain, 'fullchain.pem'),
     path.join(certsBase, cleanDomain, 'fullchain.pem'),
-    path.join('/etc/letsencrypt/live', cleanDomain, 'fullchain.pem')
+    path.join('/etc/letsencrypt/live', cleanDomain, 'fullchain.pem'),
+    path.join('/srv/nginx/certs/live', cleanDomain, 'fullchain.pem'),
+    path.join('/srv/nginx/certs', cleanDomain, 'fullchain.pem')
   ];
 
   for (const certPath of potentialPaths) {
@@ -845,6 +850,411 @@ export const getVHost = async (req, res) => {
 };
 
 /**
+ * Resuelve de forma dinámica las rutas absolutas en el HOST del daemon de Docker
+ * para los directorios de Certbot (/etc/letsencrypt -> certbot/conf, /var/www/certbot -> certbot/www).
+ *
+ * Evita el problema clásico de Docker-out-of-Docker (DooD) donde pasar rutas locales del
+ * contenedor (ej: /srv/nginx/certs) a 'docker run -v' provoca que el daemon intente montar
+ * carpetas inexistentes en el host raíz de la máquina virtual.
+ *
+ * @param {Object} [dockerInstance=docker]
+ * @returns {Promise<{ hostCertsDir: string, hostWebrootDir: string, source: string }>}
+ */
+export const resolveCertbotHostPaths = async (dockerInstance = docker) => {
+  let hostCertsDir = process.env.HOST_CERTS_DIR || process.env.HOST_CERTBOT_CONF_DIR || null;
+  let hostWebrootDir = process.env.HOST_WEBROOT_DIR || process.env.HOST_CERTBOT_WWW_DIR || null;
+
+  if (hostCertsDir && hostWebrootDir) {
+    return { hostCertsDir, hostWebrootDir, source: 'environment' };
+  }
+
+  if (dockerInstance && typeof dockerInstance.listContainers === 'function') {
+    try {
+      const containers = await dockerInstance.listContainers({ all: true });
+
+      // Contenedores candidatos a inspeccionar para extraer los montajes reales del host
+      const candidates = [];
+      const nginxInfo = await getNginxTarget(dockerInstance);
+      if (nginxInfo?.container) {
+        candidates.push(nginxInfo.container);
+      }
+
+      if (Array.isArray(containers)) {
+        for (const c of containers) {
+          const names = (c.Names || []).map(n => n.replace(/^\//, '').toLowerCase());
+          if (names.some(n => n.includes('nginx') || n.includes('proxy') || n.includes('cpanel') || n.includes('backend'))) {
+            if (!candidates.some(cand => cand.id === c.Id)) {
+              candidates.push(dockerInstance.getContainer(c.Id));
+            }
+          }
+        }
+      }
+
+      for (const cand of candidates) {
+        try {
+          const inspectData = await cand.inspect();
+          const mounts = inspectData?.Mounts || [];
+
+          for (const m of mounts) {
+            const dest = (m.Destination || '').toLowerCase();
+            const src = m.Source || '';
+
+            // Detectar directorio host para certificados (conf)
+            if (!hostCertsDir && (
+              dest === '/etc/letsencrypt' ||
+              dest === '/srv/nginx/certs' ||
+              dest.endsWith('/certs') ||
+              src.endsWith('/certbot/conf') ||
+              src.includes('/certbot/conf')
+            )) {
+              hostCertsDir = src;
+            }
+
+            // Detectar directorio host para webroot acme-challenge (www)
+            if (!hostWebrootDir && (
+              dest === '/var/www/certbot' ||
+              dest.includes('acme-challenge') ||
+              src.endsWith('/certbot/www') ||
+              src.includes('/certbot/www')
+            )) {
+              hostWebrootDir = src;
+            }
+          }
+
+          // Si se descubrió uno, inferir el complementario si siguen la estructura ~/server/certbot/(conf|www)
+          if (hostCertsDir && !hostWebrootDir) {
+            if (hostCertsDir.endsWith('/certbot/conf') || hostCertsDir.includes('/certbot/conf')) {
+              hostWebrootDir = hostCertsDir.replace(/\/certbot\/conf\/?$/, '/certbot/www');
+            }
+          }
+          if (hostWebrootDir && !hostCertsDir) {
+            if (hostWebrootDir.endsWith('/certbot/www') || hostWebrootDir.includes('/certbot/www')) {
+              hostCertsDir = hostWebrootDir.replace(/\/certbot\/www\/?$/, '/certbot/conf');
+            }
+          }
+
+          if (hostCertsDir && hostWebrootDir) {
+            return { hostCertsDir, hostWebrootDir, source: 'docker_mount_inspection' };
+          }
+        } catch (_) {}
+      }
+    } catch (inspectErr) {
+      console.warn('Aviso al inspeccionar montajes para Certbot:', inspectErr.message);
+    }
+  }
+
+  // Fallbacks usando las rutas configuradas
+  const defaultCerts = process.env.CERTS_DIR || CERTS_DIR || '/srv/nginx/certs';
+  const defaultWebroot = process.env.CERTBOT_WEBROOT || '/var/www/certbot';
+
+  return {
+    hostCertsDir: hostCertsDir || defaultCerts,
+    hostWebrootDir: hostWebrootDir || defaultWebroot,
+    source: 'fallback'
+  };
+};
+
+/**
+ * Ejecuta el contenedor certbot/certbot con montajes apuntando a las rutas del host.
+ * Emplea Docker CLI si está disponible y degrada elegantemente a Dockerode (Docker API)
+ * sobre /var/run/docker.sock en caso de que docker no esté instalado en el entorno.
+ */
+export const runCertbotDockerContainer = async ({
+  dockerInstance = docker,
+  hostWebrootDir,
+  hostCertsDir,
+  domain,
+  email,
+  forceRenewal = false
+}) => {
+  const certbotArgs = [
+    'certonly',
+    '--webroot',
+    '-w', '/var/www/certbot',
+    '-d', domain,
+    '--non-interactive',
+    '--agree-tos',
+    '--email', email,
+    forceRenewal ? '--force-renewal' : '--keep-until-expiring'
+  ];
+
+  // 1. Intentar con CLI de Docker si se encuentra disponible
+  try {
+    const dockerCmd = `docker run --rm \
+      -v "${hostWebrootDir}:/var/www/certbot" \
+      -v "${hostCertsDir}:/etc/letsencrypt" \
+      certbot/certbot ${certbotArgs.join(' ')}`;
+
+    const { stdout, stderr } = await execAsync(dockerCmd, { timeout: 120000 });
+    return {
+      success: true,
+      method: 'docker_cli',
+      output: (stdout + '\n' + stderr).trim()
+    };
+  } catch (cliErr) {
+    const msg = cliErr.message || '';
+    const isCmdNotFound = msg.includes('not found') || cliErr.code === 127;
+
+    // Si falló pero por validación de Certbot/Let's Encrypt (no por falta del binario de Docker)
+    if (!isCmdNotFound && !msg.includes('docker: not found')) {
+      return {
+        success: false,
+        method: 'docker_cli',
+        output: (cliErr.stdout || '') + '\n' + (cliErr.stderr || msg)
+      };
+    }
+
+    // 2. Si docker no está instalado en este contenedor, invocar Docker API mediante Dockerode
+    if (dockerInstance && typeof dockerInstance.createContainer === 'function') {
+      try {
+        const image = 'certbot/certbot:latest';
+
+        // Asegurar imagen disponible
+        try {
+          await dockerInstance.getImage(image).inspect();
+        } catch (imgErr) {
+          if (imgErr.statusCode === 404) {
+            console.log(`[SSL] Descargando imagen ${image} a través del socket de Docker...`);
+            await new Promise((resolve, reject) => {
+              dockerInstance.pull(image, (pullErr, stream) => {
+                if (pullErr) return reject(pullErr);
+                dockerInstance.modem.followProgress(stream, (followErr, res) => {
+                  if (followErr) return reject(followErr);
+                  resolve(res);
+                });
+              });
+            });
+          }
+        }
+
+        const container = await dockerInstance.createContainer({
+          Image: image,
+          Cmd: certbotArgs,
+          HostConfig: {
+            Binds: [
+              `${hostWebrootDir}:/var/www/certbot`,
+              `${hostCertsDir}:/etc/letsencrypt`
+            ],
+            AutoRemove: true
+          },
+          AttachStdout: true,
+          AttachStderr: true
+        });
+
+        const stream = await container.attach({
+          stream: true,
+          stdout: true,
+          stderr: true
+        });
+
+        let outputChunks = [];
+        stream.on('data', chunk => {
+          outputChunks.push(chunk);
+        });
+
+        await container.start();
+        const waitRes = await container.wait();
+
+        const fullOutput = Buffer.concat(outputChunks).toString('utf8');
+        const isSuccess = (waitRes?.StatusCode ?? 0) === 0;
+
+        return {
+          success: isSuccess,
+          method: 'dockerode',
+          output: fullOutput.trim() || `Certbot finalizó con código de salida ${waitRes?.StatusCode}`
+        };
+      } catch (dockerodeErr) {
+        return {
+          success: false,
+          method: 'dockerode',
+          output: `Error al ejecutar contenedor Certbot vía Dockerode: ${dockerodeErr.message}`
+        };
+      }
+    }
+
+    return {
+      success: false,
+      method: 'none',
+      output: msg
+    };
+  }
+};
+
+/**
+ * Ejecuta el flujo integral de emisión de certificados SSL:
+ * 1. Aplica VHost temporal en puerto 80 con endpoint de validación /.well-known/acme-challenge/
+ * 2. Resuelve dinámicamente las rutas del host y ejecuta Certbot (local, docker CLI o dockerode).
+ * 3. Si se obtuvo el certificado, genera y aplica el VHost definitivo con SSL (puerto 443) y recarga Nginx.
+ */
+export const executeCertificateIssuance = async ({
+  domain,
+  target,
+  email,
+  forceRenewal = false,
+  dockerInstance = docker
+}) => {
+  const cleanDomain = domain.trim().toLowerCase();
+  const certsBase = process.env.CERTS_DIR || CERTS_DIR || '/srv/nginx/certs';
+  const emailParam = email || process.env.CERTBOT_EMAIL || `admin@${cleanDomain}`;
+
+  // Si ya existe y no se fuerza renovación
+  const existingCert = checkCertificateExists(cleanDomain);
+  if (existingCert.exists && !forceRenewal) {
+    const sslConfig = generateVHostConfig({
+      domain: cleanDomain,
+      target,
+      hasSsl: true,
+      sslCertPath: existingCert.certPath,
+      sslKeyPath: existingCert.keyPath
+    });
+
+    const applyResult = await applyVHostWithAtomicRollback({
+      domain: cleanDomain,
+      configContent: sslConfig
+    });
+
+    return {
+      success: true,
+      message: `El certificado SSL para ${cleanDomain} ya existía en disco y se aplicó la configuración HTTPS.`,
+      alreadyExisted: true,
+      certPath: existingCert.certPath,
+      step3: applyResult
+    };
+  }
+
+  // --- PASO 1: Aplicar VHost HTTP con ACME challenge hacia /var/www/certbot ---
+  const httpAcmeConfig = generateVHostConfig({
+    domain: cleanDomain,
+    target,
+    hasSsl: false
+  });
+
+  const step1 = await applyVHostWithAtomicRollback({
+    domain: cleanDomain,
+    configContent: httpAcmeConfig
+  });
+
+  if (!step1.applied) {
+    return {
+      success: false,
+      phase: 1,
+      error: 'Error al aplicar el VHost HTTP para validación ACME.',
+      details: step1.error
+    };
+  }
+
+  // --- PASO 2: Resolver rutas en el HOST y ejecutar Certbot ---
+  const { hostCertsDir, hostWebrootDir, source: pathSource } = await resolveCertbotHostPaths(dockerInstance);
+  console.log(`[SSL] Rutas resueltas en host (${pathSource}) -> certs: ${hostCertsDir}, webroot: ${hostWebrootDir}`);
+
+  let certbotSuccess = false;
+  let certbotOutput = '';
+  let executionMethod = '';
+
+  // 2.a Intentar certbot local si está instalado y el directorio webroot local existe
+  const localWebroot = process.env.CERTBOT_WEBROOT || '/var/www/certbot';
+  if (fs.existsSync(localWebroot)) {
+    try {
+      const localCmd = `certbot certonly --webroot -w "${localWebroot}" \
+        --config-dir "${certsBase}" \
+        --work-dir "${certsBase}/work" \
+        --logs-dir "${certsBase}/logs" \
+        -d ${cleanDomain} --non-interactive --agree-tos --email ${emailParam} \
+        ${forceRenewal ? '--force-renewal' : '--keep-until-expiring'}`;
+      const { stdout, stderr } = await execAsync(localCmd, { timeout: 120000 });
+      certbotSuccess = true;
+      executionMethod = 'local_certbot';
+      certbotOutput = (stdout + '\n' + stderr).trim();
+    } catch (localErr) {
+      console.warn('[SSL] Certbot local no completó la emisión, pasando a contenedor Docker:', localErr.message);
+    }
+  }
+
+  // 2.b Si no se completó localmente, ejecutar el contenedor Docker con las rutas del host
+  if (!certbotSuccess) {
+    const dockerRunRes = await runCertbotDockerContainer({
+      dockerInstance,
+      hostWebrootDir,
+      hostCertsDir,
+      domain: cleanDomain,
+      email: emailParam,
+      forceRenewal
+    });
+
+    certbotSuccess = dockerRunRes.success;
+    executionMethod = dockerRunRes.method;
+    certbotOutput = dockerRunRes.output;
+  }
+
+  // Comprobar si tras la ejecución se generó el certificado en disco
+  const postCert = checkCertificateExists(cleanDomain);
+
+  // Si no existe (por ejemplo DNS aún no apunta al servidor o en entorno local)
+  if (!postCert.exists) {
+    try {
+      const liveDir = path.join(certsBase, 'live', cleanDomain);
+      if (!fs.existsSync(liveDir)) {
+        fs.mkdirSync(liveDir, { recursive: true });
+      }
+      const fullchainPath = path.join(liveDir, 'fullchain.pem');
+      const privkeyPath = path.join(liveDir, 'privkey.pem');
+
+      if (!fs.existsSync(fullchainPath) || !fs.existsSync(privkeyPath)) {
+        const selfSignedCmd = `openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+          -keyout "${privkeyPath}" \
+          -out "${fullchainPath}" \
+          -subj "/CN=${cleanDomain}/O=cPanel Local/C=MX"`;
+        await execAsync(selfSignedCmd);
+        executionMethod += '_self_signed_fallback';
+      }
+    } catch (openSslErr) {
+      return {
+        success: false,
+        phase: 2,
+        error: `Certbot no pudo validar el dominio '${cleanDomain}'. Verifica que los registros DNS (A/CNAME) apunten a este servidor y que los puertos 80 y 443 estén abiertos.`,
+        certbotOutput,
+        details: openSslErr.message
+      };
+    }
+  }
+
+  // --- PASO 3: Aplicar VHost HTTPS con terminación SSL y recargar Nginx ---
+  const validCert = checkCertificateExists(cleanDomain);
+  const httpsConfig = generateVHostConfig({
+    domain: cleanDomain,
+    target,
+    hasSsl: true,
+    sslCertPath: validCert.certPath,
+    sslKeyPath: validCert.keyPath
+  });
+
+  const step3 = await applyVHostWithAtomicRollback({
+    domain: cleanDomain,
+    configContent: httpsConfig
+  });
+
+  if (!step3.applied) {
+    return {
+      success: false,
+      phase: 3,
+      error: 'Certificado obtenido pero falló la aplicación del VHost HTTPS en Nginx.',
+      details: step3.error
+    };
+  }
+
+  return {
+    success: true,
+    message: `Certificado SSL para ${cleanDomain} configurado y aplicado exitosamente con recarga de Nginx.`,
+    domain: cleanDomain,
+    hasSsl: true,
+    certPath: validCert.certPath,
+    certbotOutput,
+    executionMethod,
+    step3
+  };
+};
+
+/**
  * POST /api/proxy/vhosts y POST /api/proxy
  * Crear o actualizar un Virtual Host con generador de VHosts y Rollback Atómico con doble nginx -t.
  */
@@ -969,12 +1379,50 @@ export const createOrUpdateVHost = async (req, res) => {
     }
 
     // Generar configuración con hasSsl y resolver 127.0.0.11 en ambos bloques
+    const isSslRequested = Boolean(hasSsl === true || hasSsl === 'true');
+    const existingCert = checkCertificateExists(cleanDomain);
+
+    // Si se solicitó SSL pero el certificado no existe aún en disco, auto-emitirlo
+    if (isSslRequested && !existingCert.exists) {
+      console.log(`[Proxy] SSL activado y certificado no existente para ${cleanDomain}. Iniciando emisión automática...`);
+      const issuanceResult = await executeCertificateIssuance({
+        domain: cleanDomain,
+        target,
+        email: req.body.email || process.env.CERTBOT_EMAIL || `admin@${cleanDomain}`,
+        dockerInstance: docker
+      });
+
+      if (!issuanceResult.success) {
+        return res.status(issuanceResult.phase === 1 ? 500 : 502).json({
+          success: false,
+          error: `No se pudo emitir el certificado SSL automáticamente para '${cleanDomain}'. Verifica que el DNS apunte a este servidor.`,
+          details: issuanceResult.error || issuanceResult.details,
+          certbotOutput: issuanceResult.certbotOutput
+        });
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: `Virtual Host para ${cleanDomain} configurado y certificado SSL emitido exitosamente.`,
+        data: {
+          domain: cleanDomain,
+          hasSsl: true,
+          target,
+          certPath: issuanceResult.certPath,
+          certbotOutput: issuanceResult.certbotOutput,
+          executionMethod: issuanceResult.executionMethod,
+          testDetails: issuanceResult.step3?.testDetails,
+          reloadDetails: issuanceResult.step3?.reloadDetails
+        }
+      });
+    }
+
     const configContent = generateVHostConfig({
       domain,
       target,
-      hasSsl,
-      sslCertPath,
-      sslKeyPath,
+      hasSsl: isSslRequested,
+      sslCertPath: sslCertPath || existingCert.certPath,
+      sslKeyPath: sslKeyPath || existingCert.keyPath,
       resolver: customResolver || '127.0.0.11 valid=10s ipv6=off'
     });
 
@@ -1080,8 +1528,6 @@ export const issueCertificate = async (req, res) => {
   }
 
   const cleanDomain = domainParam.trim().toLowerCase();
-  const certsBase = process.env.CERTS_DIR || CERTS_DIR || '/srv/nginx/certs';
-  const existingCert = checkCertificateExists(cleanDomain);
 
   // Determinar upstream target actual desde el archivo existente o parámetro
   let target = targetParam;
@@ -1099,142 +1545,26 @@ export const issueCertificate = async (req, res) => {
     });
   }
 
-  // Si ya existe el certificado y no se solicita renovación forzada
-  if (existingCert.exists && !forceRenewal) {
-    // Asegurar que el VHost HTTPS esté activo
-    const sslConfig = generateVHostConfig({
-      domain: cleanDomain,
-      target,
-      hasSsl: true,
-      sslCertPath: existingCert.certPath,
-      sslKeyPath: existingCert.keyPath
-    });
-
-    const applyResult = await applyVHostWithAtomicRollback({
-      domain: cleanDomain,
-      configContent: sslConfig
-    });
-
-    return res.json({
-      success: true,
-      message: `El certificado SSL para ${cleanDomain} ya existía en disco y se aplicó la configuración HTTPS.`,
-      alreadyExisted: true,
-      certPath: existingCert.certPath,
-      applyResult
-    });
-  }
-
-  // --- PASO 1: Aplicar VHost HTTP con ACME challenge hacia /var/www/certbot ---
-  const httpAcmeConfig = generateVHostConfig({
+  const result = await executeCertificateIssuance({
     domain: cleanDomain,
     target,
-    hasSsl: false
+    email: emailParam,
+    forceRenewal,
+    dockerInstance: docker
   });
 
-  const step1 = await applyVHostWithAtomicRollback({
-    domain: cleanDomain,
-    configContent: httpAcmeConfig
-  });
-
-  if (!step1.applied) {
-    return res.status(500).json({
+  if (!result.success) {
+    return res.status(result.phase === 1 ? 500 : 502).json({
       success: false,
-      error: 'Error al aplicar el VHost HTTP para validación ACME.',
-      details: step1.error
-    });
-  }
-
-  // --- PASO 2: Ejecutar Certbot (local o contenedor Docker) ---
-  let certbotSuccess = false;
-  let certbotOutput = '';
-
-  // 2.a Probar ejecución de certbot local si estuviera instalado
-  try {
-    const certbotCmd = `certbot certonly --webroot -w /var/www/certbot -d ${cleanDomain} --non-interactive --agree-tos --email ${emailParam} ${forceRenewal ? '--force-renewal' : '--keep-until-expiring'}`;
-    const { stdout, stderr } = await execAsync(certbotCmd, { timeout: 120000 });
-    certbotSuccess = true;
-    certbotOutput = (stdout + '\n' + stderr).trim();
-  } catch (localCertbotErr) {
-    // 2.b Si no está certbot local, ejecutar contenedor docker certbot/certbot
-    try {
-      const dockerCertbotCmd = `docker run --rm \
-        -v "/var/www/certbot:/var/www/certbot" \
-        -v "${certsBase}:/etc/letsencrypt" \
-        certbot/certbot certonly --webroot -w /var/www/certbot \
-        -d ${cleanDomain} --non-interactive --agree-tos --email ${emailParam} \
-        ${forceRenewal ? '--force-renewal' : '--keep-until-expiring'}`;
-
-      const { stdout, stderr } = await execAsync(dockerCertbotCmd, { timeout: 120000 });
-      certbotSuccess = true;
-      certbotOutput = (stdout + '\n' + stderr).trim();
-    } catch (dockerCertbotErr) {
-      console.warn('Ejecución de Certbot en vivo no completada en este entorno:', dockerCertbotErr.message);
-      certbotOutput = dockerCertbotErr.message;
-    }
-  }
-
-  // Comprobar si tras la ejecución se generó el certificado
-  const postCert = checkCertificateExists(cleanDomain);
-
-  // Si no se pudo generar (por ejemplo DNS no apunta a esta IP o entorno de pruebas local)
-  if (!postCert.exists) {
-    // Si estamos en entorno de desarrollo/local sin DNS real, generar certificado autofirmado para pruebas completas
-    try {
-      const liveDir = path.join(certsBase, 'live', cleanDomain);
-      if (!fs.existsSync(liveDir)) {
-        fs.mkdirSync(liveDir, { recursive: true });
-      }
-      const fullchainPath = path.join(liveDir, 'fullchain.pem');
-      const privkeyPath = path.join(liveDir, 'privkey.pem');
-
-      if (!fs.existsSync(fullchainPath) || !fs.existsSync(privkeyPath)) {
-        const selfSignedCmd = `openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-          -keyout "${privkeyPath}" \
-          -out "${fullchainPath}" \
-          -subj "/CN=${cleanDomain}/O=cPanel Local/C=MX"`;
-        await execAsync(selfSignedCmd);
-      }
-    } catch (openSslErr) {
-      return res.status(502).json({
-        success: false,
-        error: `Certbot no pudo validar el dominio '${cleanDomain}'. Verifica que los registros DNS (A/CNAME) apunten a este servidor y que los puertos 80 y 443 estén abiertos.`,
-        certbotOutput,
-        details: openSslErr.message
-      });
-    }
-  }
-
-  // --- PASO 3: Aplicar VHost HTTPS con terminación SSL y recargar nginx-proxy ---
-  const validCert = checkCertificateExists(cleanDomain);
-  const httpsConfig = generateVHostConfig({
-    domain: cleanDomain,
-    target,
-    hasSsl: true,
-    sslCertPath: validCert.certPath,
-    sslKeyPath: validCert.keyPath
-  });
-
-  const step3 = await applyVHostWithAtomicRollback({
-    domain: cleanDomain,
-    configContent: httpsConfig
-  });
-
-  if (!step3.applied) {
-    return res.status(500).json({
-      success: false,
-      error: 'Certificado obtenido pero falló la aplicación del VHost HTTPS en Nginx.',
-      details: step3.error
+      error: result.error,
+      certbotOutput: result.certbotOutput,
+      details: result.details
     });
   }
 
   return res.json({
     success: true,
-    message: `Certificado SSL para ${cleanDomain} configurado y aplicado exitosamente con recarga de Nginx.`,
-    domain: cleanDomain,
-    hasSsl: true,
-    certPath: validCert.certPath,
-    certbotOutput,
-    step3
+    ...result
   });
 };
 
