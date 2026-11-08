@@ -12,7 +12,8 @@
     AlertTriangle,
     Layers,
     Activity,
-    Plus
+    Plus,
+    Trash2
   } from 'lucide-svelte';
   import { api } from '../lib/api.js';
   import DeployCard from '../components/DeployCard.svelte';
@@ -50,6 +51,70 @@
     containerName: '',
     action: ''
   };
+
+  // Delete Modal State
+  let deleteModal = {
+    show: false,
+    containerId: null,
+    containerName: '',
+    deleteDatabase: true,
+    deleteVolumes: true,
+    isDeleting: false
+  };
+
+  function requestDelete(container) {
+    const id = container.id || container.Id;
+    const name = container.name || container.Names?.[0]?.replace(/^\//, '') || id.slice(0, 12);
+    deleteModal = {
+      show: true,
+      containerId: id,
+      containerName: name,
+      deleteDatabase: true,
+      deleteVolumes: true,
+      isDeleting: false
+    };
+  }
+
+  function closeDeleteModal() {
+    deleteModal = {
+      show: false,
+      containerId: null,
+      containerName: '',
+      deleteDatabase: true,
+      deleteVolumes: true,
+      isDeleting: false
+    };
+  }
+
+  async function executeConfirmedDelete() {
+    if (!deleteModal.containerId) return;
+    deleteModal.isDeleting = true;
+    try {
+      const res = await api.delete(`/containers/${deleteModal.containerId}`, {
+        deleteDatabase: deleteModal.deleteDatabase,
+        deleteVolumes: deleteModal.deleteVolumes
+      });
+
+      if (res && res.success) {
+        window.dispatchEvent(new CustomEvent('cpanel:toast', {
+          detail: {
+            message: res.message || `Contenedor "${deleteModal.containerName}" eliminado exitosamente.`,
+            type: 'success'
+          }
+        }));
+        closeDeleteModal();
+        if (fetchContainers) {
+          await fetchContainers();
+        }
+      } else {
+        alert(`Error al eliminar contenedor: ${res?.error || 'Desconocido'}`);
+      }
+    } catch (err) {
+      alert(`Error al eliminar contenedor: ${err.message}`);
+    } finally {
+      deleteModal.isDeleting = false;
+    }
+  }
 
   const actionLabels = {
     start: { title: 'Iniciar', verb: 'iniciar', color: '#10b981' },
@@ -272,15 +337,27 @@
               </button>
             </div>
 
-            <!-- Inspect Button -->
-            <button 
-              class="btn-action btn-inspect" 
-              on:click={() => openInspect(c)}
-              title="Inspeccionar configuración y red"
-            >
-              <Info size={14} />
-              <span>Inspect</span>
-            </button>
+            <!-- Action Buttons Right (Inspect & Delete) -->
+            <div class="control-actions-right">
+              <button 
+                class="btn-action btn-inspect" 
+                on:click={() => openInspect(c)}
+                title="Inspeccionar configuración y red"
+              >
+                <Info size={14} />
+                <span>Inspect</span>
+              </button>
+
+              <button 
+                class="btn-action btn-delete-container" 
+                disabled={isLoadingAction || deleteModal.isDeleting}
+                on:click={() => requestDelete(c)}
+                title="Eliminar contenedor y base de datos"
+              >
+                <Trash2 size={14} />
+                <span>Eliminar</span>
+              </button>
+            </div>
           </div>
         </div>
       {/each}
@@ -321,6 +398,67 @@
   container={inspectContainerData}
   on:close={() => { showInspectModal = false; inspectContainerData = null; }}
 />
+
+<!-- Modal de Confirmación para Eliminar Contenedor y Base de Datos -->
+{#if deleteModal.show}
+  <div class="modal-backdrop" on:click|self={closeDeleteModal}>
+    <div class="confirm-dialog delete-dialog">
+      <div class="confirm-header">
+        <Trash2 size={22} color="#ef4444" />
+        <h4>Eliminar Contenedor</h4>
+      </div>
+      <p class="confirm-text">
+        ¿Estás seguro de que deseas eliminar permanentemente el contenedor 
+        <strong>{deleteModal.containerName}</strong>? Esta acción no se puede deshacer.
+      </p>
+
+      <div class="delete-options">
+        <label class="delete-checkbox-label">
+          <input 
+            type="checkbox" 
+            bind:checked={deleteModal.deleteDatabase} 
+            disabled={deleteModal.isDeleting}
+          />
+          <div class="checkbox-text">
+            <strong>Eliminar base de datos vinculada</strong>
+            <span>Elimina el esquema MariaDB asociado a este sitio ({deleteModal.containerName.replace(/^wp_site_/, 'wp_db_')})</span>
+          </div>
+        </label>
+
+        <label class="delete-checkbox-label">
+          <input 
+            type="checkbox" 
+            bind:checked={deleteModal.deleteVolumes} 
+            disabled={deleteModal.isDeleting}
+          />
+          <div class="checkbox-text">
+            <strong>Eliminar volúmenes de datos</strong>
+            <span>Remueve los volúmenes persistentes asociados a este contenedor</span>
+          </div>
+        </label>
+      </div>
+
+      <div class="confirm-buttons">
+        <button class="btn-cancel" disabled={deleteModal.isDeleting} on:click={closeDeleteModal}>
+          Cancelar
+        </button>
+        <button 
+          class="btn-confirm-delete" 
+          disabled={deleteModal.isDeleting}
+          on:click={executeConfirmedDelete}
+        >
+          {#if deleteModal.isDeleting}
+            <RefreshCw size={14} class="spin" />
+            <span>Eliminando...</span>
+          {:else}
+            <Trash2 size={14} />
+            <span>Eliminar Definitivamente</span>
+          {/if}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .containers-view {
@@ -533,6 +671,95 @@
   .btn-inspect:hover {
     color: var(--text-main);
     border-color: var(--primary);
+  }
+
+  .control-actions-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .btn-delete-container {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+  }
+  .btn-delete-container:hover {
+    background: #ef4444;
+    color: #ffffff;
+    border-color: #ef4444;
+  }
+
+  /* Modal de Eliminar Contenedor */
+  .delete-dialog {
+    max-width: 480px;
+  }
+
+  .delete-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--surface-muted);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 14px;
+    margin: 4px 0;
+  }
+
+  .delete-checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    cursor: pointer;
+  }
+
+  .delete-checkbox-label input[type="checkbox"] {
+    margin-top: 3px;
+    cursor: pointer;
+    accent-color: #ef4444;
+    width: 16px;
+    height: 16px;
+  }
+
+  .checkbox-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .checkbox-text strong {
+    font-size: 0.88rem;
+    color: var(--text-main);
+  }
+
+  .checkbox-text span {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.3;
+  }
+
+  .btn-confirm-delete {
+    background: #dc2626;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s;
+  }
+
+  .btn-confirm-delete:hover:not(:disabled) {
+    background: #b91c1c;
+  }
+
+  .btn-confirm-delete:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   :global(body.theme-light) .btn-start {

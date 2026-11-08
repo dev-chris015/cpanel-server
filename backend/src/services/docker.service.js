@@ -272,6 +272,15 @@ export const createAndDeployContainer = async ({
   };
 };
 
+/**
+ * Elimina un contenedor por ID o nombre, opcionalmente eliminando sus volúmenes asociados.
+ */
+export const removeContainerById = async (id, { removeVolumes = false, force = true } = {}) => {
+  const container = docker.getContainer(id);
+  await container.remove({ force, v: Boolean(removeVolumes) });
+  return { success: true, id };
+};
+
 export default {
   listContainers,
   containerAction,
@@ -280,5 +289,6 @@ export default {
   ensureNamedVolume,
   resolvePersistentVolumes,
   pullImageIfNeeded,
-  createAndDeployContainer
+  createAndDeployContainer,
+  removeContainerById
 };

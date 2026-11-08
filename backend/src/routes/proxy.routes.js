@@ -76,8 +76,24 @@ export const generateVHostConfig = ({
 
   const isSsl = Boolean(hasSsl === true || hasSsl === 'true');
   const defaultCertsBase = process.env.CERTS_DIR || CERTS_DIR || '/srv/nginx/certs';
-  const cert = sslCertPath || `${defaultCertsBase}/${cleanDomain}/fullchain.pem`;
-  const key = sslKeyPath || `${defaultCertsBase}/${cleanDomain}/privkey.pem`;
+  // Resolver ruta de certificado compatible con nginx-proxy (/etc/letsencrypt/live o /srv/nginx/certs/live)
+  let resolvedCert = sslCertPath;
+  let resolvedKey = sslKeyPath;
+
+  if (!resolvedCert || !resolvedKey) {
+    const existing = checkCertificateExists(cleanDomain);
+    if (existing.exists && existing.certPath && existing.keyPath) {
+      resolvedCert = existing.certPath;
+      resolvedKey = existing.keyPath;
+    } else {
+      resolvedCert = path.join(defaultCertsBase, 'live', cleanDomain, 'fullchain.pem');
+      resolvedKey = path.join(defaultCertsBase, 'live', cleanDomain, 'privkey.pem');
+    }
+  }
+
+  // Si Nginx Proxy tiene montado /etc/letsencrypt, asegurar que la ruta generada sea visible para el proxy
+  const cert = resolvedCert;
+  const key = resolvedKey;
 
   if (isSsl) {
     // Ambos bloques (HTTP en puerto 80 y HTTPS en puerto 443) contienen resolver 127.0.0.11
@@ -494,10 +510,24 @@ export const checkCertificateExists = (domain) => {
       const hasKey = fs.existsSync(keyPath);
       let stats = null;
       try { stats = fs.statSync(certPath); } catch (_) {}
+
+      // Resolver la ruta como la ve el contenedor nginx-proxy si se usa /etc/letsencrypt o /srv/nginx/certs
+      let nginxCertPath = certPath;
+      let nginxKeyPath = keyPath;
+
+      // Si certPath es /srv/nginx/certs/... pero nginx-proxy tiene montado ./certbot/conf en /etc/letsencrypt
+      // O si certPath contiene /live/<domain>/fullchain.pem
+      if (certPath.startsWith('/srv/nginx/certs')) {
+        nginxCertPath = certPath.replace(/^\/srv\/nginx\/certs/, '/etc/letsencrypt');
+        nginxKeyPath = keyPath.replace(/^\/srv\/nginx\/certs/, '/etc/letsencrypt');
+      }
+
       return {
         exists: true,
-        certPath,
-        keyPath: hasKey ? keyPath : null,
+        certPath: nginxCertPath,
+        keyPath: hasKey ? nginxKeyPath : null,
+        localCertPath: certPath,
+        localKeyPath: hasKey ? keyPath : null,
         hasKey,
         mtime: stats ? stats.mtime : null
       };

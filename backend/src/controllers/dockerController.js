@@ -1,5 +1,6 @@
 import Docker from 'dockerode';
 import { createAndDeployContainer } from '../services/docker.service.js';
+import { createDatabaseWithUser } from '../services/database.service.js';
 
 const socketPath = process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock';
 const docker = new Docker({ socketPath });
@@ -81,6 +82,22 @@ export const deployContainer = async (req, res) => {
       }
     }
 
+    // Si el payload viene de creación de WordPress con configuración de base de datos
+    let dbCreationResult = null;
+    const wpCfg = req.body.wordpressConfig;
+    if (wpCfg && wpCfg.dbName && wpCfg.dbUser && wpCfg.dbPassword) {
+      try {
+        dbCreationResult = await createDatabaseWithUser({
+          name: wpCfg.dbName,
+          username: wpCfg.dbUser,
+          password: wpCfg.dbPassword,
+          site: name || wpCfg.containerName || null
+        });
+      } catch (dbErr) {
+        console.warn('Aviso: no se pudo auto-crear la base de datos de WordPress:', dbErr.message);
+      }
+    }
+
     const deployed = await createAndDeployContainer({
       image,
       name,
@@ -100,7 +117,8 @@ export const deployContainer = async (req, res) => {
         name: deployed.name,
         status: deployed.status,
         network: deployed.network,
-        binds: deployed.binds
+        binds: deployed.binds,
+        database: dbCreationResult
       }
     });
   } catch (error) {
