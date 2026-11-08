@@ -748,7 +748,7 @@ export const extractPortFromTarget = (targetStr) => {
  * GET /api/proxy/vhosts y GET /api/proxy
  * Listar todos los VHosts configurados.
  */
-const listVHosts = async (req, res) => {
+export const listVHosts = async (req, res) => {
   try {
     const vhostsDir = getVHostsDir();
     const files = fs.readdirSync(vhostsDir).filter(f => f.endsWith('.conf'));
@@ -803,7 +803,7 @@ const listVHosts = async (req, res) => {
  * GET /api/proxy/vhosts/:domain y GET /api/proxy/:domain
  * Obtener la configuración de un VHost específico.
  */
-const getVHost = async (req, res) => {
+export const getVHost = async (req, res) => {
   try {
     const { domain } = req.params;
     if (!isValidDomain(domain)) {
@@ -1020,7 +1020,7 @@ export const createOrUpdateVHost = async (req, res) => {
  * DELETE /api/proxy/vhosts/:domain y DELETE /api/proxy/:domain
  * Eliminar un Virtual Host con Rollback Atómico respaldado por doble nginx -t.
  */
-const deleteVHost = async (req, res) => {
+export const deleteVHost = async (req, res) => {
   try {
     const { domain } = req.params;
     if (!isValidDomain(domain)) {

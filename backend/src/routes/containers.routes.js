@@ -2,7 +2,7 @@ import { Router } from 'express';
 import Docker from 'dockerode';
 import { listContainers, containerAction, inspectContainer, removeContainerById } from '../services/docker.service.js';
 import { checkContainerDatabase, dropSchema, dropDatabaseUser } from '../services/database.service.js';
-import { deleteVHostWithAtomicRollback, listVHosts, extractHostFromTarget, getVHostsDir } from './proxy.routes.js';
+import { deleteVHostWithAtomicRollback, getVHostsDir } from './proxy.routes.js';
 import { DOCKER_SOCKET_PATH } from '../config/paths.js';
 import fs from 'fs';
 import path from 'path';
