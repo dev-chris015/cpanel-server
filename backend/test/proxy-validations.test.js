@@ -21,13 +21,18 @@ import {
 
 describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => {
   let tempVHostsDir;
+  let tempCertsDir;
   let originalEnvConfDir;
+  let originalEnvCertsDir;
 
   before(() => {
-    // Crear un directorio temporal aislado para las pruebas de VHost
+    // Crear un directorio temporal aislado para las pruebas de VHost y Certs
     tempVHostsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vhosts-test-'));
+    tempCertsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'certs-test-'));
     originalEnvConfDir = process.env.NGINX_CONF_DIR;
+    originalEnvCertsDir = process.env.CERTS_DIR;
     process.env.NGINX_CONF_DIR = tempVHostsDir;
+    process.env.CERTS_DIR = tempCertsDir;
   });
 
   after(() => {
@@ -36,8 +41,16 @@ describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => 
     } else {
       delete process.env.NGINX_CONF_DIR;
     }
+    if (originalEnvCertsDir !== undefined) {
+      process.env.CERTS_DIR = originalEnvCertsDir;
+    } else {
+      delete process.env.CERTS_DIR;
+    }
     try {
       fs.rmSync(tempVHostsDir, { recursive: true, force: true });
+    } catch (_) {}
+    try {
+      fs.rmSync(tempCertsDir, { recursive: true, force: true });
     } catch (_) {}
   });
 
@@ -707,5 +720,199 @@ describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => 
     assert.equal(failNewResult.success, false);
     // Validar Rollback: el archivo temporal fue eliminado
     assert.equal(fs.existsSync(vhostFile), false);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Fase 5: Pruebas Automatizadas y Validación
+  // ---------------------------------------------------------------------------
+
+  // Paso 5.1: Test de Pull Preventivo
+  test('Paso 5.1: Test de Pull Preventivo (simular imagen faltante 404 y verificar docker.pull)', async () => {
+    let pulledImage = null;
+    let progressFollowed = false;
+
+    const mockDockerPull = {
+      getImage: (img) => ({
+        inspect: async () => {
+          const err = new Error(`Image ${img} not found`);
+          err.statusCode = 404;
+          throw err;
+        }
+      }),
+      pull: (imageName, callback) => {
+        pulledImage = imageName;
+        const fakeStream = { on: () => {} };
+        callback(null, fakeStream);
+      },
+      modem: {
+        followProgress: (stream, onFinished) => {
+          progressFollowed = true;
+          onFinished(null, [{ status: 'Download complete' }]);
+        }
+      }
+    };
+
+    await ensureImageExists('certbot/certbot:latest', mockDockerPull);
+    assert.equal(pulledImage, 'certbot/certbot:latest');
+    assert.equal(progressFollowed, true);
+  });
+
+  // Paso 5.2: Test de Rollback ante fallo de Certbot
+  test('Paso 5.2: Test de Rollback ante fallo de Certbot (código 1, archivo temporal eliminado, estado Nginx preservado)', async () => {
+    const domain = 'fase5-rollback.example.com';
+    const filePath = path.join(tempVHostsDir, `${domain}.conf`);
+    const originalConfig = '# Estado previo preservado\nserver { listen 80; server_name fase5-rollback.example.com; }';
+
+    // 1. Archivo pre-existente
+    fs.writeFileSync(filePath, originalConfig, 'utf8');
+
+    const failingDocker = {
+      getImage: () => ({ inspect: async () => ({ Id: 'sha256:mock' }) }),
+      createContainer: async () => ({
+        attach: async () => ({
+          on: (event, cb) => {
+            if (event === 'data') cb(Buffer.from('Certbot failure: Connection refused on port 80'));
+          }
+        }),
+        start: async () => {},
+        wait: async () => ({ StatusCode: 1 })
+      }),
+      listContainers: async () => []
+    };
+
+    const resPreExisting = await executeCertificateIssuanceWorkflow({
+      domain,
+      target: 'http://app-container:3000',
+      email: 'admin@fase5-rollback.example.com',
+      dockerInstance: failingDocker
+    });
+
+    assert.equal(resPreExisting.success, false);
+    assert.equal(resPreExisting.statusCode, 1);
+    assert.equal(fs.existsSync(filePath), true);
+    assert.equal(fs.readFileSync(filePath, 'utf8'), originalConfig);
+
+    // 2. Archivo nuevo (sin previo)
+    fs.unlinkSync(filePath);
+    const resNew = await executeCertificateIssuanceWorkflow({
+      domain,
+      target: 'http://app-container:3000',
+      email: 'admin@fase5-rollback.example.com',
+      dockerInstance: failingDocker
+    });
+
+    assert.equal(resNew.success, false);
+    assert.equal(resNew.statusCode, 1);
+    assert.equal(fs.existsSync(filePath), false);
+  });
+
+  // Paso 5.3: Test de Descubrimiento de Montajes
+  test('Paso 5.3: Test de Descubrimiento de Montajes (inspección de nginx-proxy.inspect().Mounts)', async () => {
+    const mockNginxProxyDocker = {
+      getContainer: (id) => ({
+        inspect: async () => ({
+          Id: id,
+          State: { Running: true, Status: 'running' },
+          Mounts: [
+            {
+              Type: 'bind',
+              Source: '/host/vps/letsencrypt/conf',
+              Destination: '/etc/letsencrypt'
+            },
+            {
+              Type: 'bind',
+              Source: '/host/vps/certbot/www',
+              Destination: '/var/www/certbot'
+            }
+          ]
+        })
+      }),
+      listContainers: async () => [
+        {
+          Id: 'nginx_proxy_c1',
+          Names: ['/nginx-proxy'],
+          State: 'running'
+        }
+      ]
+    };
+
+    const discovered = await resolveCertbotHostPaths(mockNginxProxyDocker);
+    assert.equal(discovered.hostCertsDir, '/host/vps/letsencrypt/conf');
+    assert.equal(discovered.hostWebrootDir, '/host/vps/certbot/www');
+    assert.equal(discovered.source, 'docker_mount_inspection');
+  });
+
+  // Paso 5.4: Test de Emisión Exitosa de 4 Pasos
+  test('Paso 5.4: Test de Emisión Exitosa de 4 Pasos (HTTP temporal -> Certbot -> HTTPS final con recargas)', async () => {
+    const successDomain = 'success.example.com';
+    const filePath = path.join(tempVHostsDir, `${successDomain}.conf`);
+    const liveCertsDir = path.join(tempCertsDir, 'live', successDomain);
+
+    const stagesObserved = [];
+
+    const mockSuccessDocker = {
+      getImage: () => ({ inspect: async () => ({ Id: 'sha256:certbot' }) }),
+      createContainer: async () => ({
+        attach: async () => ({
+          on: (event, cb) => {
+            if (event === 'data') cb(Buffer.from('Congratulations! Certificate and chain saved at /etc/letsencrypt/live\n'));
+          }
+        }),
+        start: async () => {
+          // Durante la ejecución de Certbot en el Paso 3, comprobar que el archivo HTTP temporal existe
+          assert.equal(fs.existsSync(filePath), true);
+          const currentContent = fs.readFileSync(filePath, 'utf8');
+          assert.match(currentContent, /listen 80;/);
+          assert.match(currentContent, /location \/\.well-known\/acme-challenge\//);
+          assert.doesNotMatch(currentContent, /listen 443/);
+          stagesObserved.push('step1_http_temporal_active');
+
+          // Emular la creación del certificado en disco por parte de Certbot
+          fs.mkdirSync(liveCertsDir, { recursive: true });
+          fs.writeFileSync(path.join(liveCertsDir, 'fullchain.pem'), '-----BEGIN CERTIFICATE-----\nMOCK_CERT\n-----END CERTIFICATE-----');
+          fs.writeFileSync(path.join(liveCertsDir, 'privkey.pem'), '-----BEGIN PRIVATE KEY-----\nMOCK_KEY\n-----END PRIVATE KEY-----');
+        },
+        wait: async () => ({ StatusCode: 0 })
+      }),
+      listContainers: async () => [
+        {
+          Id: 'nginx-proxy-id',
+          Names: ['/nginx-proxy'],
+          State: 'running'
+        }
+      ],
+      getContainer: (id) => ({
+        inspect: async () => ({
+          Id: id,
+          State: { Running: true, Status: 'running' },
+          Mounts: [
+            { Type: 'bind', Source: '/host/certs', Destination: '/etc/letsencrypt' },
+            { Type: 'bind', Source: '/host/www', Destination: '/var/www/certbot' }
+          ]
+        })
+      })
+    };
+
+    const issuanceResult = await executeCertificateIssuanceWorkflow({
+      domain: successDomain,
+      target: 'http://my-web-app:8080',
+      email: 'admin@success.example.com',
+      dockerInstance: mockSuccessDocker
+    });
+
+    // Validar éxito general y respuesta HTTP 201
+    assert.equal(issuanceResult.success, true);
+    assert.equal(issuanceResult.httpStatus, 201);
+    assert.equal(stagesObserved.includes('step1_http_temporal_active'), true);
+
+    // Validar que el archivo final fue actualizado a la plantilla HTTPS definitiva
+    assert.equal(fs.existsSync(filePath), true);
+    const finalContent = fs.readFileSync(filePath, 'utf8');
+    assert.match(finalContent, /listen 443 ssl;/);
+    assert.match(finalContent, /listen \[::\]:443 ssl;/);
+    assert.match(finalContent, /http2 on;/);
+    assert.match(finalContent, /return 301 https:\/\/\$host\$request_uri;/);
+    assert.match(finalContent, /ssl_certificate .*?fullchain\.pem;/);
+    assert.match(finalContent, /proxy_pass \$backend_upstream;/);
   });
 });
