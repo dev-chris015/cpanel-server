@@ -138,7 +138,16 @@ export const api = {
   get: (endpoint, options = {}) => apiRequest(endpoint, { ...options, method: 'GET' }),
   post: (endpoint, body, options = {}) => apiRequest(endpoint, { ...options, method: 'POST', body }),
   put: (endpoint, body, options = {}) => apiRequest(endpoint, { ...options, method: 'PUT', body }),
-  delete: (endpoint, options = {}) => apiRequest(endpoint, { ...options, method: 'DELETE' }),
+  delete: (endpoint, bodyOrOptions = {}, options = {}) => {
+    // Si el segundo argumento tiene body explícito o propiedades de RequestInit (headers, signal, etc.)
+    const isOptionsObject = bodyOrOptions && ('headers' in bodyOrOptions || 'signal' in bodyOrOptions || 'body' in bodyOrOptions);
+    if (isOptionsObject) {
+      return apiRequest(endpoint, { ...bodyOrOptions, method: 'DELETE' });
+    }
+    // Si se pasa un payload como segundo argumento (ej. { deleteDatabase: true, deleteVolumes: false })
+    const body = (bodyOrOptions && Object.keys(bodyOrOptions).length > 0) ? bodyOrOptions : undefined;
+    return apiRequest(endpoint, { ...options, method: 'DELETE', body });
+  },
   getToken,
   setToken,
   clearToken,

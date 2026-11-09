@@ -118,7 +118,7 @@
     if (!deleteModal.containerId) return;
     deleteModal.isDeleting = true;
     try {
-      const res = await api.delete(`/containers/${deleteModal.containerId}`, {
+      const res = await api.delete(`/containers/${encodeURIComponent(deleteModal.containerId)}?deleteDatabase=${deleteModal.deleteDatabase}&deleteVolumes=${deleteModal.deleteVolumes}`, {
         deleteDatabase: deleteModal.deleteDatabase,
         deleteVolumes: deleteModal.deleteVolumes
       });
