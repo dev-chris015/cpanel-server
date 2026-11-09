@@ -4,7 +4,14 @@ import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
 import Docker from 'dockerode';
-import { DOCKER_SOCKET_PATH, NGINX_VHOSTS_DIR, NGINX_CONTAINER_NAME, CERTS_DIR } from '../config/paths.js';
+import {
+  DOCKER_SOCKET_PATH,
+  NGINX_VHOSTS_DIR,
+  NGINX_CONTAINER_NAME,
+  CERTS_DIR,
+  HOST_CERTBOT_CONF_DIR,
+  HOST_CERTBOT_WWW_DIR
+} from '../config/paths.js';
 
 export { NGINX_VHOSTS_DIR, NGINX_CONTAINER_NAME, CERTS_DIR };
 
@@ -861,33 +868,41 @@ export const getVHost = async (req, res) => {
  * @returns {Promise<{ hostCertsDir: string, hostWebrootDir: string, source: string }>}
  */
 export const resolveCertbotHostPaths = async (dockerInstance = docker) => {
-  let hostCertsDir = process.env.HOST_CERTS_DIR || process.env.HOST_CERTBOT_CONF_DIR || null;
-  let hostWebrootDir = process.env.HOST_WEBROOT_DIR || process.env.HOST_CERTBOT_WWW_DIR || null;
+  let hostCertsDir = null;
+  let hostWebrootDir = null;
 
-  if (hostCertsDir && hostWebrootDir) {
-    return { hostCertsDir, hostWebrootDir, source: 'environment' };
-  }
-
+  // Prioridad 1 y 2: Inspección dinámica de montajes en Docker
   if (dockerInstance && typeof dockerInstance.listContainers === 'function') {
     try {
       const containers = await dockerInstance.listContainers({ all: true });
 
-      // Contenedores candidatos a inspeccionar para extraer los montajes reales del host
-      const candidates = [];
+      // Prioridad 1: nginx-proxy
+      // Prioridad 2: cpanel-backend (si nginx-proxy no estuviera disponible o no aportó montajes)
+      let nginxContainer = null;
+      let backendContainer = null;
+
       const nginxInfo = await getNginxTarget(dockerInstance);
-      if (nginxInfo?.container) {
-        candidates.push(nginxInfo.container);
+      if (nginxInfo?.container && nginxInfo.isRunning) {
+        nginxContainer = nginxInfo.container;
       }
 
       if (Array.isArray(containers)) {
         for (const c of containers) {
           const names = (c.Names || []).map(n => n.replace(/^\//, '').toLowerCase());
-          if (names.some(n => n.includes('nginx') || n.includes('proxy') || n.includes('cpanel') || n.includes('backend'))) {
-            if (!candidates.some(cand => cand.id === c.Id)) {
-              candidates.push(dockerInstance.getContainer(c.Id));
-            }
+          if (!nginxContainer && names.some(n => n === 'nginx-proxy' || n.includes('nginx-proxy') || n.includes('proxy'))) {
+            nginxContainer = dockerInstance.getContainer(c.Id);
+          }
+          if (!backendContainer && names.some(n => n === 'cpanel-backend' || n.includes('cpanel-backend') || (n.includes('cpanel') && n.includes('backend')))) {
+            backendContainer = dockerInstance.getContainer(c.Id);
           }
         }
+      }
+
+      // Orden de inspección: primero nginx-proxy (Prioridad 1), luego cpanel-backend (Prioridad 2)
+      const candidates = [];
+      if (nginxContainer) candidates.push(nginxContainer);
+      if (backendContainer && (!nginxContainer || backendContainer.id !== nginxContainer.id)) {
+        candidates.push(backendContainer);
       }
 
       for (const cand of candidates) {
@@ -899,7 +914,7 @@ export const resolveCertbotHostPaths = async (dockerInstance = docker) => {
             const dest = (m.Destination || '').toLowerCase();
             const src = m.Source || '';
 
-            // Detectar directorio host para certificados (conf)
+            // Destination: /etc/letsencrypt
             if (!hostCertsDir && (
               dest === '/etc/letsencrypt' ||
               dest === '/srv/nginx/certs' ||
@@ -910,7 +925,7 @@ export const resolveCertbotHostPaths = async (dockerInstance = docker) => {
               hostCertsDir = src;
             }
 
-            // Detectar directorio host para webroot acme-challenge (www)
+            // Destination: /var/www/certbot
             if (!hostWebrootDir && (
               dest === '/var/www/certbot' ||
               dest.includes('acme-challenge') ||
@@ -943,14 +958,23 @@ export const resolveCertbotHostPaths = async (dockerInstance = docker) => {
     }
   }
 
-  // Fallbacks usando las rutas configuradas
-  const defaultCerts = process.env.CERTS_DIR || CERTS_DIR || '/srv/nginx/certs';
-  const defaultWebroot = process.env.CERTBOT_WEBROOT || '/var/www/certbot';
+  // Prioridad 3: Variables de entorno (HOST_CERTBOT_CONF_DIR / HOST_CERTBOT_WWW_DIR o alias)
+  const envCertsDir = process.env.HOST_CERTBOT_CONF_DIR || process.env.HOST_CERTS_DIR;
+  const envWebrootDir = process.env.HOST_CERTBOT_WWW_DIR || process.env.HOST_WEBROOT_DIR;
 
+  if (envCertsDir && envWebrootDir) {
+    return {
+      hostCertsDir: envCertsDir,
+      hostWebrootDir: envWebrootDir,
+      source: 'environment'
+    };
+  }
+
+  // Prioridad 4: Fallback estándar de la VPS (/home/azureuser/server/certbot/conf y /home/azureuser/server/certbot/www)
   return {
-    hostCertsDir: hostCertsDir || defaultCerts,
-    hostWebrootDir: hostWebrootDir || defaultWebroot,
-    source: 'fallback'
+    hostCertsDir: hostCertsDir || envCertsDir || HOST_CERTBOT_CONF_DIR || '/home/azureuser/server/certbot/conf',
+    hostWebrootDir: hostWebrootDir || envWebrootDir || HOST_CERTBOT_WWW_DIR || '/home/azureuser/server/certbot/www',
+    source: (hostCertsDir && hostWebrootDir) ? 'docker_mount_inspection' : (envCertsDir || envWebrootDir) ? 'environment' : 'fallback'
   };
 };
 

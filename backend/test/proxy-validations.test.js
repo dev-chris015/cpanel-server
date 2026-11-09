@@ -440,17 +440,58 @@ describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => 
     assert.equal(resolved.hostWebrootDir, '/home/azureuser/server/certbot/www');
     assert.equal(resolved.source, 'docker_mount_inspection');
 
-    // 8.b Override mediante variables de entorno
-    process.env.HOST_CERTS_DIR = '/custom/host/certs';
-    process.env.HOST_WEBROOT_DIR = '/custom/host/www';
+    // 8.b Fallback o override mediante variables de entorno (Prioridad 3 cuando no hay montajes o se especifican)
+    process.env.HOST_CERTBOT_CONF_DIR = '/custom/host/certs';
+    process.env.HOST_CERTBOT_WWW_DIR = '/custom/host/www';
     try {
-      const resolvedEnv = await resolveCertbotHostPaths(mockDockerWithMounts);
+      // Sin montajes en Docker para probar la prioridad de variables de entorno
+      const mockDockerWithoutMounts = {
+        getContainer: () => ({ inspect: async () => ({ Mounts: [] }) }),
+        listContainers: async () => []
+      };
+      const resolvedEnv = await resolveCertbotHostPaths(mockDockerWithoutMounts);
       assert.equal(resolvedEnv.hostCertsDir, '/custom/host/certs');
       assert.equal(resolvedEnv.hostWebrootDir, '/custom/host/www');
       assert.equal(resolvedEnv.source, 'environment');
     } finally {
-      delete process.env.HOST_CERTS_DIR;
-      delete process.env.HOST_WEBROOT_DIR;
+      delete process.env.HOST_CERTBOT_CONF_DIR;
+      delete process.env.HOST_CERTBOT_WWW_DIR;
     }
+
+    // 8.c Prioridad 1 (nginx-proxy) vs Prioridad 2 (cpanel-backend) vs Prioridad 4 (fallback VPS)
+    // Cuando nginx-proxy no tiene montajes pero cpanel-backend sí:
+    const mockDockerWithBackendOnly = {
+      getContainer: (id) => ({
+        inspect: async () => {
+          if (id === 'backend123') {
+            return {
+              Id: 'backend123',
+              Mounts: [
+                { Type: 'bind', Source: '/backend/mount/certs', Destination: '/etc/letsencrypt' },
+                { Type: 'bind', Source: '/backend/mount/www', Destination: '/var/www/certbot' }
+              ]
+            };
+          }
+          return { Id: id, Mounts: [] };
+        }
+      }),
+      listContainers: async () => [
+        { Id: 'backend123', Names: ['/cpanel-backend'], State: 'running' }
+      ]
+    };
+    const resolvedBackend = await resolveCertbotHostPaths(mockDockerWithBackendOnly);
+    assert.equal(resolvedBackend.hostCertsDir, '/backend/mount/certs');
+    assert.equal(resolvedBackend.hostWebrootDir, '/backend/mount/www');
+    assert.equal(resolvedBackend.source, 'docker_mount_inspection');
+
+    // Cuando no hay contenedores ni env vars (Prioridad 4: Fallback estándar VPS)
+    const mockDockerEmpty = {
+      getContainer: () => ({ inspect: async () => ({ Mounts: [] }) }),
+      listContainers: async () => []
+    };
+    const resolvedFallback = await resolveCertbotHostPaths(mockDockerEmpty);
+    assert.equal(resolvedFallback.hostCertsDir, '/home/azureuser/server/certbot/conf');
+    assert.equal(resolvedFallback.hostWebrootDir, '/home/azureuser/server/certbot/www');
+    assert.equal(resolvedFallback.source, 'fallback');
   });
 });
