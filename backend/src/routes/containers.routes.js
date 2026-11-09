@@ -16,9 +16,18 @@ const PROTECTED_SYSTEM_CONTAINERS = [
   'cpanel-backend',
   'cpanel-frontend',
   'nginx-proxy',
+  'proxy',
+  'nginx',
   'mariadb',
+  'wordpress_org_db',
   'netdata'
 ];
+
+export const isProtectedSystemContainer = (name) => {
+  if (!name || typeof name !== 'string') return false;
+  const clean = name.replace(/^\//, '').toLowerCase().trim();
+  return PROTECTED_SYSTEM_CONTAINERS.some(p => clean === p || clean.includes(p));
+};
 
 /**
  * GET /api/containers
@@ -132,10 +141,10 @@ router.delete('/:id', async (req, res) => {
     }
 
     // 2. Proteger contenedores del sistema
-    if (PROTECTED_SYSTEM_CONTAINERS.includes(containerName.toLowerCase())) {
+    if (isProtectedSystemContainer(containerName)) {
       return res.status(403).json({
         success: false,
-        error: `Operación denegada: El contenedor "${containerName}" es un componente crítico del sistema cPanel.`
+        error: `Operación denegada: El contenedor "${containerName}" es un componente crítico del sistema cPanel y está protegido contra eliminación.`
       });
     }
 

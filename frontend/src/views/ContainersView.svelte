@@ -13,7 +13,8 @@
     Layers,
     Activity,
     Plus,
-    Trash2
+    Trash2,
+    ShieldAlert
   } from 'lucide-svelte';
   import { api } from '../lib/api.js';
   import DeployCard from '../components/DeployCard.svelte';
@@ -62,7 +63,32 @@
     isDeleting: false
   };
 
+  // Lista de contenedores del sistema protegidos contra eliminación
+  const PROTECTED_CONTAINERS = [
+    'cpanel-backend',
+    'cpanel-frontend',
+    'netdata',
+    'nginx-proxy',
+    'proxy',
+    'nginx'
+  ];
+
+  function isProtected(container) {
+    const name = (container?.name || container?.Names?.[0] || '').replace(/^\//, '').toLowerCase().trim();
+    return PROTECTED_CONTAINERS.some(p => name === p || name.includes(p));
+  }
+
   function requestDelete(container) {
+    if (isProtected(container)) {
+      window.dispatchEvent(new CustomEvent('cpanel:toast', {
+        detail: {
+          message: 'Este contenedor es un componente crítico del sistema cPanel y está protegido contra eliminación.',
+          type: 'error'
+        }
+      }));
+      return;
+    }
+
     const id = container.id || container.Id;
     const name = container.name || container.Names?.[0]?.replace(/^\//, '') || id.slice(0, 12);
     deleteModal = {
@@ -348,15 +374,26 @@
                 <span>Inspect</span>
               </button>
 
-              <button 
-                class="btn-action btn-delete-container" 
-                disabled={isLoadingAction || deleteModal.isDeleting}
-                on:click={() => requestDelete(c)}
-                title="Eliminar contenedor y base de datos"
-              >
-                <Trash2 size={14} />
-                <span>Eliminar</span>
-              </button>
+              {#if isProtected(c)}
+                <button 
+                  class="btn-action btn-protected" 
+                  disabled
+                  title="Contenedor protegido del sistema (no eliminable)"
+                >
+                  <ShieldAlert size={14} />
+                  <span>Protegido</span>
+                </button>
+              {:else}
+                <button 
+                  class="btn-action btn-delete-container" 
+                  disabled={isLoadingAction || deleteModal.isDeleting}
+                  on:click={() => requestDelete(c)}
+                  title="Eliminar contenedor y base de datos"
+                >
+                  <Trash2 size={14} />
+                  <span>Eliminar</span>
+                </button>
+              {/if}
             </div>
           </div>
         </div>
@@ -688,6 +725,18 @@
     background: #ef4444;
     color: #ffffff;
     border-color: #ef4444;
+  }
+
+  .btn-protected {
+    background: rgba(148, 163, 184, 0.08);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    cursor: not-allowed;
+    opacity: 0.75;
+  }
+  .btn-protected:hover {
+    background: rgba(148, 163, 184, 0.08);
+    color: #94a3b8;
   }
 
   /* Modal de Eliminar Contenedor */
