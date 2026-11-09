@@ -979,6 +979,116 @@ export const resolveCertbotHostPaths = async (dockerInstance = docker) => {
 };
 
 /**
+ * Asegura la existencia de una imagen en el daemon de Docker mediante Dockerode.
+ * Si no existe (404), la descarga (docker.pull) y procesa el progreso.
+ *
+ * @param {string} imageName
+ * @param {Object} [dockerInstance=docker]
+ * @returns {Promise<void>}
+ */
+export const ensureImageExists = async (imageName, dockerInstance = docker) => {
+  if (!dockerInstance || typeof dockerInstance.getImage !== 'function') {
+    return;
+  }
+  try {
+    await dockerInstance.getImage(imageName).inspect();
+  } catch (err) {
+    if (err.statusCode === 404 || err.status === 404) {
+      console.log(`[Docker] Imagen "${imageName}" no encontrada localmente. Descargando con docker.pull...`);
+      await new Promise((resolve, reject) => {
+        dockerInstance.pull(imageName, (pullErr, stream) => {
+          if (pullErr) return reject(pullErr);
+          if (dockerInstance.modem && typeof dockerInstance.modem.followProgress === 'function') {
+            dockerInstance.modem.followProgress(stream, (followErr, res) => {
+              if (followErr) return reject(followErr);
+              resolve(res);
+            });
+          } else {
+            stream.on('end', resolve);
+            stream.on('error', reject);
+          }
+        });
+      });
+    } else {
+      throw err;
+    }
+  }
+};
+
+/**
+ * Orquesta la ejecución de un contenedor efímero de Certbot directamente a través
+ * de la API del socket de Docker con Dockerode, eliminando dependencias de CLI local.
+ *
+ * @param {Object} options
+ * @param {Object} [options.dockerInstance=docker]
+ * @param {string} options.hostWebrootDir
+ * @param {string} options.hostCertsDir
+ * @param {string} options.domain
+ * @param {string} options.email
+ * @param {boolean} [options.forceRenewal=false]
+ * @returns {Promise<{ statusCode: number, output: string, success: boolean }>}
+ */
+export const runEphemeralCertbotContainer = async ({
+  dockerInstance = docker,
+  hostWebrootDir,
+  hostCertsDir,
+  domain,
+  email,
+  forceRenewal = false
+}) => {
+  const imageName = 'certbot/certbot:latest';
+  await ensureImageExists(imageName, dockerInstance);
+
+  const cmd = [
+    'certonly',
+    '--webroot',
+    '-w', '/var/www/certbot',
+    '-d', domain,
+    '--email', email,
+    '--agree-tos',
+    '--non-interactive',
+    forceRenewal ? '--force-renewal' : '--keep-until-expiring'
+  ];
+
+  const container = await dockerInstance.createContainer({
+    Image: imageName,
+    Cmd: cmd,
+    HostConfig: {
+      Binds: [
+        `${hostWebrootDir}:/var/www/certbot`,
+        `${hostCertsDir}:/etc/letsencrypt`
+      ],
+      AutoRemove: true
+    },
+    AttachStdout: true,
+    AttachStderr: true
+  });
+
+  const stream = await container.attach({
+    stream: true,
+    stdout: true,
+    stderr: true
+  });
+
+  let outputChunks = [];
+  stream.on('data', chunk => {
+    outputChunks.push(chunk);
+  });
+
+  await container.start();
+  const waitRes = await container.wait();
+
+  const fullOutput = Buffer.concat(outputChunks).toString('utf8');
+  const statusCode = waitRes?.StatusCode ?? 0;
+
+  return {
+    statusCode,
+    output: fullOutput.trim() || `Certbot finalizó con código de salida ${statusCode}`,
+    success: statusCode === 0
+  };
+};
+
+/**
  * Ejecuta el contenedor certbot/certbot con montajes apuntando a las rutas del host.
  * Emplea Docker CLI si está disponible y degrada elegantemente a Dockerode (Docker API)
  * sobre /var/run/docker.sock en caso de que docker no esté instalado en el entorno.
@@ -1031,61 +1141,20 @@ export const runCertbotDockerContainer = async ({
     // 2. Si docker no está instalado en este contenedor, invocar Docker API mediante Dockerode
     if (dockerInstance && typeof dockerInstance.createContainer === 'function') {
       try {
-        const image = 'certbot/certbot:latest';
-
-        // Asegurar imagen disponible
-        try {
-          await dockerInstance.getImage(image).inspect();
-        } catch (imgErr) {
-          if (imgErr.statusCode === 404) {
-            console.log(`[SSL] Descargando imagen ${image} a través del socket de Docker...`);
-            await new Promise((resolve, reject) => {
-              dockerInstance.pull(image, (pullErr, stream) => {
-                if (pullErr) return reject(pullErr);
-                dockerInstance.modem.followProgress(stream, (followErr, res) => {
-                  if (followErr) return reject(followErr);
-                  resolve(res);
-                });
-              });
-            });
-          }
-        }
-
-        const container = await dockerInstance.createContainer({
-          Image: image,
-          Cmd: certbotArgs,
-          HostConfig: {
-            Binds: [
-              `${hostWebrootDir}:/var/www/certbot`,
-              `${hostCertsDir}:/etc/letsencrypt`
-            ],
-            AutoRemove: true
-          },
-          AttachStdout: true,
-          AttachStderr: true
+        const ephemeralRes = await runEphemeralCertbotContainer({
+          dockerInstance,
+          hostWebrootDir,
+          hostCertsDir,
+          domain,
+          email,
+          forceRenewal
         });
-
-        const stream = await container.attach({
-          stream: true,
-          stdout: true,
-          stderr: true
-        });
-
-        let outputChunks = [];
-        stream.on('data', chunk => {
-          outputChunks.push(chunk);
-        });
-
-        await container.start();
-        const waitRes = await container.wait();
-
-        const fullOutput = Buffer.concat(outputChunks).toString('utf8');
-        const isSuccess = (waitRes?.StatusCode ?? 0) === 0;
 
         return {
-          success: isSuccess,
+          success: ephemeralRes.success,
           method: 'dockerode',
-          output: fullOutput.trim() || `Certbot finalizó con código de salida ${waitRes?.StatusCode}`
+          output: ephemeralRes.output,
+          statusCode: ephemeralRes.statusCode
         };
       } catch (dockerodeErr) {
         return {

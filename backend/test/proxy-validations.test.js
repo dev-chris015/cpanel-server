@@ -12,7 +12,9 @@ import {
   getVHostsDir,
   getNginxTarget,
   reloadNginxHandler,
-  resolveCertbotHostPaths
+  resolveCertbotHostPaths,
+  ensureImageExists,
+  runEphemeralCertbotContainer
 } from '../src/routes/proxy.routes.js';
 
 describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => {
@@ -493,5 +495,99 @@ describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => 
     assert.equal(resolvedFallback.hostCertsDir, '/home/azureuser/server/certbot/conf');
     assert.equal(resolvedFallback.hostWebrootDir, '/home/azureuser/server/certbot/www');
     assert.equal(resolvedFallback.source, 'fallback');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Prueba 9: Gestor Dockerode para Certbot con pull preventivo y contenedor efímero
+  // ---------------------------------------------------------------------------
+  test('Prueba 9: ensureImageExists y runEphemeralCertbotContainer (Dockerode)', async () => {
+    let pulledImage = null;
+    let progressFollowed = false;
+    let createdContainerConfig = null;
+    let containerStarted = false;
+    let attached = false;
+
+    const mockDocker = {
+      getImage: (imageName) => ({
+        inspect: async () => {
+          if (imageName === 'certbot/certbot:latest') {
+            const err = new Error('No such image');
+            err.statusCode = 404;
+            throw err;
+          }
+          return { Id: 'sha256:dummy' };
+        }
+      }),
+      pull: (imageName, callback) => {
+        pulledImage = imageName;
+        const fakeStream = { on: () => {} };
+        callback(null, fakeStream);
+      },
+      modem: {
+        followProgress: (stream, onFinished) => {
+          progressFollowed = true;
+          onFinished(null, [{ status: 'Download complete' }]);
+        }
+      },
+      createContainer: async (config) => {
+        createdContainerConfig = config;
+        return {
+          attach: async () => {
+            attached = true;
+            return {
+              on: (event, handler) => {
+                if (event === 'data') {
+                  handler(Buffer.from('Certificate issued successfully\n'));
+                }
+              }
+            };
+          },
+          start: async () => {
+            containerStarted = true;
+          },
+          wait: async () => ({ StatusCode: 0 })
+        };
+      }
+    };
+
+    // 9.a Verificar ensureImageExists con pull preventivo en 404
+    await ensureImageExists('certbot/certbot:latest', mockDocker);
+    assert.equal(pulledImage, 'certbot/certbot:latest');
+    assert.equal(progressFollowed, true);
+
+    // 9.b Verificar runEphemeralCertbotContainer
+    const res = await runEphemeralCertbotContainer({
+      dockerInstance: mockDocker,
+      hostWebrootDir: '/custom/host/www',
+      hostCertsDir: '/custom/host/conf',
+      domain: 'ejemplo.com',
+      email: 'admin@ejemplo.com'
+    });
+
+    assert.equal(res.statusCode, 0);
+    assert.equal(res.success, true);
+    assert.match(res.output, /Certificate issued successfully/);
+    assert.equal(containerStarted, true);
+    assert.equal(attached, true);
+
+    // Validar configuración de createContainer
+    assert.equal(createdContainerConfig.Image, 'certbot/certbot:latest');
+    assert.deepEqual(createdContainerConfig.HostConfig, {
+      Binds: [
+        '/custom/host/www:/var/www/certbot',
+        '/custom/host/conf:/etc/letsencrypt'
+      ],
+      AutoRemove: true
+    });
+    assert.deepEqual(createdContainerConfig.Cmd, [
+      'certonly',
+      '--webroot',
+      '-w', '/var/www/certbot',
+      '-d', 'ejemplo.com',
+      '--email', 'admin@ejemplo.com',
+      '--agree-tos',
+      '--non-interactive',
+      '--keep-until-expiring'
+    ]);
   });
 });
