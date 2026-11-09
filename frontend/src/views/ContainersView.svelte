@@ -58,7 +58,7 @@
     show: false,
     containerId: null,
     containerName: '',
-    deleteDatabase: true,
+    deleteDatabase: false,
     deleteVolumes: true,
     isDeleting: false
   };
@@ -95,7 +95,7 @@
       show: true,
       containerId: id,
       containerName: name,
-      deleteDatabase: true,
+      deleteDatabase: false,
       deleteVolumes: true,
       isDeleting: false
     };
@@ -106,7 +106,7 @@
       show: false,
       containerId: null,
       containerName: '',
-      deleteDatabase: true,
+      deleteDatabase: false,
       deleteVolumes: true,
       isDeleting: false
     };
@@ -457,8 +457,8 @@
             disabled={deleteModal.isDeleting}
           />
           <div class="checkbox-text">
-            <strong>Eliminar base de datos vinculada</strong>
-            <span>Elimina el esquema MariaDB asociado a este sitio ({deleteModal.containerName.replace(/^wp_site_/, 'wp_db_')})</span>
+            <strong>Eliminar también la base de datos vinculada</strong>
+            <span>Por defecto se conservará huérfana en MariaDB para resguardo de tus datos ({deleteModal.containerName.replace(/^wp_site_/, 'wp_db_')})</span>
           </div>
         </label>
 

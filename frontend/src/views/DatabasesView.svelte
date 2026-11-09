@@ -156,6 +156,7 @@
       return {
         name: targetSite,
         matched: exists,
+        isOrphan: !exists,
         isWordpress: true
       };
     }
@@ -164,9 +165,22 @@
     for (const c of containers || []) {
       const cName = (c.name || c.Names?.[0] || '').replace(/^\//, '');
       if (cName.toLowerCase().includes(cleanDb) || cleanDb.includes(cName.toLowerCase())) {
-        return { name: cName, matched: true, isWordpress: /wordpress/i.test(cName) };
+        return { name: cName, matched: true, isOrphan: false, isWordpress: /wordpress/i.test(cName) };
       }
     }
+
+    // Caso 3: Si la base de datos tenía un prefijo o estructura asociada pero ya no existe el contenedor
+    if (cleanDb.startsWith('wp_db_') || cleanDb.startsWith('site_') || cleanDb.startsWith('app_')) {
+      const targetSite = cleanDb.replace(/^wp_db_/, 'wp_site_');
+      return {
+        name: targetSite,
+        matched: false,
+        isOrphan: true,
+        isWordpress: cleanDb.startsWith('wp_db_')
+      };
+    }
+
+    return null;
 
     return null;
   }
@@ -316,6 +330,51 @@
       showNotice(`Error al crear base de datos: ${msg}`, 'error');
     } finally {
       actionLoading = false;
+    }
+  }
+
+  // Estado del Modal de Eliminación de Esquema
+  let deleteSchemaModal = {
+    show: false,
+    schemaName: '',
+    isDeleting: false
+  };
+
+  function requestDeleteSchema(schemaName) {
+    deleteSchemaModal = {
+      show: true,
+      schemaName,
+      isDeleting: false
+    };
+  }
+
+  function closeDeleteSchemaModal() {
+    deleteSchemaModal = {
+      show: false,
+      schemaName: '',
+      isDeleting: false
+    };
+  }
+
+  async function executeDeleteSchema() {
+    if (!deleteSchemaModal.schemaName) return;
+    deleteSchemaModal.isDeleting = true;
+
+    try {
+      const res = await api.delete(`/databases/schemas/${encodeURIComponent(deleteSchemaModal.schemaName)}`);
+      if (res && res.success) {
+        showNotice(res.message || `Base de datos "${deleteSchemaModal.schemaName}" eliminada correctamente.`, 'success');
+        closeDeleteSchemaModal();
+        await fetchSchemas();
+        await fetchTelemetry();
+      } else {
+        showNotice(res?.error || 'No se pudo eliminar la base de datos.', 'error');
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.error || err.message;
+      showNotice(`Error al eliminar base de datos: ${msg}`, 'error');
+    } finally {
+      deleteSchemaModal.isDeleting = false;
     }
   }
 
@@ -615,32 +674,43 @@
               <tbody>
                 {#each schemas as s}
                   {@const assoc = getAssociatedSite(s.name)}
-                  <tr>
+                  {@const isOrphan = !s.isSystem && (!assoc || assoc.isOrphan || !assoc.matched)}
+                  <tr class:row-orphan={isOrphan}>
                     <td class="col-name">
                       <div class="schema-name-cell">
-                        <Database size={15} class="text-cyan" />
-                        <span class="font-mono schema-title">{s.name}</span>
+                        <Database size={15} class={isOrphan ? 'text-danger' : 'text-cyan'} />
+                        <span class="font-mono schema-title" class:text-danger={isOrphan}>{s.name}</span>
                         {#if s.isSystem}
                           <span class="system-badge">Sistema</span>
+                        {:else if isOrphan}
+                          <span class="orphan-badge" title="El sitio o contenedor vinculado ya no existe">Sitio Eliminado</span>
                         {/if}
                       </div>
                     </td>
 
                     <td class="col-site">
-                      {#if assoc}
-                        <div class="site-association-pill" class:site-matched={assoc.matched} title="Asociado al contenedor {assoc.name}">
+                      {#if assoc && assoc.matched}
+                        <div class="site-association-pill site-matched" title="Asociado al contenedor {assoc.name}">
                           <Server size={12} class="text-cyan" />
                           <span class="font-mono">{assoc.name}</span>
+                        </div>
+                      {:else if assoc && assoc.isOrphan}
+                        <div class="site-association-pill site-orphan" title="El contenedor {assoc.name} fue eliminado">
+                          <AlertTriangle size={12} class="text-danger" />
+                          <span class="font-mono">{assoc.name} (Eliminado)</span>
                         </div>
                       {:else if s.isSystem}
                         <span class="text-muted font-mono text-xs">Interno MariaDB</span>
                       {:else}
-                        <span class="text-muted font-mono text-xs">Independiente / Global</span>
+                        <div class="site-association-pill site-orphan" title="Esta base de datos no tiene contenedor asociado">
+                          <AlertTriangle size={12} class="text-danger" />
+                          <span class="font-mono">Sin Sitio Vinculado</span>
+                        </div>
                       {/if}
                     </td>
 
                     <td class="col-size font-mono">
-                      <span class="size-pill">{s.sizeMb} MB</span>
+                      <span class="size-pill" class:size-pill-orphan={isOrphan}>{s.sizeMb} MB</span>
                     </td>
 
                     <td class="col-tables font-mono">
@@ -652,21 +722,36 @@
                     </td>
 
                     <td class="col-actions text-right">
-                      <button 
-                        type="button" 
-                        class="btn-backup" 
-                        on:click={() => handleTriggerBackup(s.name)}
-                        disabled={backupInProgress[s.name]}
-                        title="Generar volcado .sql en /srv/backups"
-                      >
-                        {#if backupInProgress[s.name]}
-                          <RefreshCw size={13} class="spin" />
-                          <span>Respaldando...</span>
-                        {:else}
-                          <FolderArchive size={13} />
-                          <span>Hacer Backup</span>
+                      <div class="action-btn-group">
+                        <button 
+                          type="button" 
+                          class="btn-backup" 
+                          on:click={() => handleTriggerBackup(s.name)}
+                          disabled={backupInProgress[s.name]}
+                          title="Generar volcado .sql en /srv/backups"
+                        >
+                          {#if backupInProgress[s.name]}
+                            <RefreshCw size={13} class="spin" />
+                            <span>Respaldando...</span>
+                          {:else}
+                            <FolderArchive size={13} />
+                            <span>Hacer Backup</span>
+                          {/if}
+                        </button>
+
+                        {#if isOrphan && !s.isSystem}
+                          <button 
+                            type="button" 
+                            class="btn-action-delete" 
+                            on:click={() => requestDeleteSchema(s.name)}
+                            disabled={deleteSchemaModal.isDeleting}
+                            title="Eliminar base de datos huérfana de forma permanente"
+                          >
+                            <Trash2 size={13} />
+                            <span>Borrar BD</span>
+                          </button>
                         {/if}
-                      </button>
+                      </div>
                     </td>
                   </tr>
                 {/each}
@@ -1142,6 +1227,66 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Modal de Confirmación: Eliminar Base de Datos Huérfana -->
+  {#if deleteSchemaModal.show}
+    <div 
+      class="modal-backdrop" 
+      on:click|self={closeDeleteSchemaModal}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div class="modal-card modal-delete-schema">
+        <div class="modal-header">
+          <div class="modal-title">
+            <Trash2 size={18} class="text-danger" />
+            <h4>Eliminar Base de Datos Huérfana</h4>
+          </div>
+          <button type="button" class="btn-close-modal" on:click={closeDeleteSchemaModal}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div class="modal-body-delete">
+          <div class="delete-warning-banner">
+            <AlertTriangle size={24} class="text-danger flex-shrink-0" />
+            <div>
+              <strong>¡Atención: Acción Irreversible!</strong>
+              <p>Estás a punto de eliminar la base de datos <code class="font-mono text-danger">{deleteSchemaModal.schemaName}</code> cuyo sitio web asociado ya no existe en el sistema.</p>
+            </div>
+          </div>
+          <p class="text-muted text-xs">
+            Se ejecutará <code class="font-mono">DROP DATABASE `{deleteSchemaModal.schemaName}`;</code> en el servidor MariaDB. Todos los datos, tablas y registros se perderán permanentemente.
+          </p>
+        </div>
+
+        <div class="modal-actions">
+          <button 
+            type="button" 
+            class="btn-cancel" 
+            disabled={deleteSchemaModal.isDeleting}
+            on:click={closeDeleteSchemaModal}
+          >
+            Cancelar
+          </button>
+          <button 
+            type="button" 
+            class="btn-confirm-delete" 
+            disabled={deleteSchemaModal.isDeleting}
+            on:click={executeDeleteSchema}
+          >
+            {#if deleteSchemaModal.isDeleting}
+              <RefreshCw size={14} class="spin" />
+              <span>Eliminando...</span>
+            {:else}
+              <Trash2 size={14} />
+              <span>Eliminar Definitivamente</span>
+            {/if}
+          </button>
+        </div>
       </div>
     </div>
   {/if}
@@ -1776,6 +1921,101 @@
     background: rgba(34, 197, 94, 0.1);
     border-color: rgba(34, 197, 94, 0.3);
     color: #4ade80;
+  }
+
+  .site-orphan {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #fca5a5;
+  }
+
+  /* Filas de BD Huérfana con tono rojo suave */
+  .row-orphan {
+    background: rgba(239, 68, 68, 0.04);
+  }
+
+  .row-orphan:hover {
+    background: rgba(239, 68, 68, 0.08) !important;
+  }
+
+  .orphan-badge {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #f87171;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .size-pill-orphan {
+    background: rgba(239, 68, 68, 0.12) !important;
+    border-color: rgba(239, 68, 68, 0.3) !important;
+    color: #fca5a5 !important;
+  }
+
+  /* Modal Eliminar BD Huérfana */
+  .modal-delete-schema {
+    max-width: 460px;
+  }
+
+  .modal-body-delete {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .delete-warning-banner {
+    display: flex;
+    gap: 0.85rem;
+    align-items: flex-start;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 8px;
+    padding: 0.9rem;
+    color: #fca5a5;
+    font-size: 0.825rem;
+    line-height: 1.45;
+  }
+
+  .delete-warning-banner strong {
+    display: block;
+    color: #f87171;
+    font-size: 0.875rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .delete-warning-banner p {
+    margin: 0;
+  }
+
+  .btn-confirm-delete {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #ef4444;
+    border: 1px solid #ef4444;
+    color: #ffffff;
+    padding: 0.55rem 1rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-confirm-delete:hover:not(:disabled) {
+    background: #dc2626;
+    border-color: #dc2626;
+  }
+
+  .btn-confirm-delete:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .autofill-box {
