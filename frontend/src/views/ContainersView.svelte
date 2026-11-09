@@ -70,7 +70,9 @@
     'netdata',
     'nginx-proxy',
     'proxy',
-    'nginx'
+    'nginx',
+    'mariadb',
+    'wordpress_org_db'
   ];
 
   function isProtected(container) {

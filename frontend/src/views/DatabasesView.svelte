@@ -143,45 +143,62 @@
       return null;
     }
 
-    // Caso 1: wp_db_<id> -> wp_site_<id>
+    // Caso 1: wp_db_<id> -> buscar primero coincidencia directa o derivada wp_site_<id>, wp_<id>, sitio<id>
     const wpDbMatch = cleanDb.match(/^wp_db_(.+)$/);
     if (wpDbMatch) {
       const id = wpDbMatch[1];
       const targetSite = `wp_site_${id}`;
-      // Verificar si existe en contenedores
-      const exists = (containers || []).some(c => {
+      // Verificar si existe en contenedores por coincidencia exacta o de sufijo
+      const matchedContainer = (containers || []).find(c => {
         const name = (c.name || c.Names?.[0] || '').replace(/^\//, '').toLowerCase();
-        return name === targetSite.toLowerCase();
+        return name === targetSite.toLowerCase() || 
+               name === `wp_${id}`.toLowerCase() || 
+               name === id.toLowerCase();
       });
+
+      if (matchedContainer) {
+        const cName = (matchedContainer.name || matchedContainer.Names?.[0] || '').replace(/^\//, '');
+        return {
+          name: cName,
+          matched: true,
+          isOrphan: false,
+          isWordpress: true
+        };
+      }
+
+      // Si no encontró el contenedor activo, se marca como huérfano con el nombre del sitio esperado
       return {
         name: targetSite,
-        matched: exists,
-        isOrphan: !exists,
+        matched: false,
+        isOrphan: true,
         isWordpress: true
       };
     }
 
-    // Caso 2: Contenedor con nombre coincidente o env var
+    // Caso 2: Contenedor con nombre que coincida o contenga el nombre de la BD (o viceversa)
     for (const c of containers || []) {
       const cName = (c.name || c.Names?.[0] || '').replace(/^\//, '');
-      if (cName.toLowerCase().includes(cleanDb) || cleanDb.includes(cName.toLowerCase())) {
+      const cleanCName = cName.toLowerCase();
+      // Ignorar nombres genéricos de base de datos como 'mariadb' o 'salones_db'
+      if (['mariadb', 'salones_db'].includes(cleanCName)) continue;
+
+      if (cleanCName.includes(cleanDb) || cleanDb.includes(cleanCName)) {
         return { name: cName, matched: true, isOrphan: false, isWordpress: /wordpress/i.test(cName) };
       }
     }
 
-    // Caso 3: Si la base de datos tenía un prefijo o estructura asociada pero ya no existe el contenedor
-    if (cleanDb.startsWith('wp_db_') || cleanDb.startsWith('site_') || cleanDb.startsWith('app_')) {
+    // Caso 3: Solo si tenía prefijo explícito de sitio ('wp_db_', 'site_', 'app_') y el contenedor ya no existe
+    if (cleanDb.startsWith('wp_db_')) {
       const targetSite = cleanDb.replace(/^wp_db_/, 'wp_site_');
       return {
         name: targetSite,
         matched: false,
         isOrphan: true,
-        isWordpress: cleanDb.startsWith('wp_db_')
+        isWordpress: true
       };
     }
 
-    return null;
-
+    // Caso 4: Bases de datos independientes o sin convención de contenedor no son huérfanas
     return null;
   }
 
@@ -674,7 +691,7 @@
               <tbody>
                 {#each schemas as s}
                   {@const assoc = getAssociatedSite(s.name)}
-                  {@const isOrphan = !s.isSystem && (!assoc || assoc.isOrphan || !assoc.matched)}
+                  {@const isOrphan = !s.isSystem && Boolean(assoc?.isOrphan)}
                   <tr class:row-orphan={isOrphan}>
                     <td class="col-name">
                       <div class="schema-name-cell">
@@ -702,10 +719,7 @@
                       {:else if s.isSystem}
                         <span class="text-muted font-mono text-xs">Interno MariaDB</span>
                       {:else}
-                        <div class="site-association-pill site-orphan" title="Esta base de datos no tiene contenedor asociado">
-                          <AlertTriangle size={12} class="text-danger" />
-                          <span class="font-mono">Sin Sitio Vinculado</span>
-                        </div>
+                        <span class="text-muted font-mono text-xs">Independiente</span>
                       {/if}
                     </td>
 
@@ -1656,24 +1670,29 @@
   /* Tablas de Datos */
   .table-responsive {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    border-radius: 8px;
   }
 
   .data-table {
     width: 100%;
+    min-width: 680px;
     border-collapse: collapse;
     font-size: 0.85rem;
   }
 
   .data-table th {
     text-align: left;
-    padding: 0.75rem 1rem;
+    padding: 0.75rem 0.85rem;
     color: #94a3b8;
     font-weight: 600;
     border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+    white-space: nowrap;
   }
 
   .data-table td {
-    padding: 0.85rem 1rem;
+    padding: 0.75rem 0.85rem;
     border-bottom: 1px solid rgba(148, 163, 184, 0.08);
     vertical-align: middle;
   }
@@ -1682,23 +1701,53 @@
     background: rgba(30, 41, 59, 0.3);
   }
 
+  .col-name {
+    min-width: 170px;
+  }
+
+  .col-site {
+    min-width: 150px;
+  }
+
+  .col-size {
+    white-space: nowrap;
+  }
+
+  .col-tables {
+    white-space: nowrap;
+  }
+
+  .col-charset {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .col-actions {
+    white-space: nowrap;
+  }
+
   .schema-name-cell, .file-cell, .user-cell {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
+    flex-wrap: wrap;
   }
 
   .schema-title, .file-name {
     font-weight: 600;
     color: #f8fafc;
+    word-break: break-all;
   }
 
   .system-badge {
-    font-size: 0.675rem;
+    font-size: 0.65rem;
     background: rgba(148, 163, 184, 0.15);
     color: #94a3b8;
-    padding: 0.15rem 0.45rem;
+    padding: 0.1rem 0.4rem;
     border-radius: 4px;
+    font-weight: 600;
   }
 
   .size-pill {
@@ -1908,13 +1957,17 @@
   .site-association-pill {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
     background: rgba(14, 165, 233, 0.1);
     border: 1px solid rgba(14, 165, 233, 0.25);
     color: #38bdf8;
-    padding: 0.2rem 0.55rem;
+    padding: 0.18rem 0.5rem;
     border-radius: 6px;
-    font-size: 0.775rem;
+    font-size: 0.75rem;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .site-matched {
@@ -1941,15 +1994,17 @@
   .orphan-badge {
     display: inline-flex;
     align-items: center;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
     color: #f87171;
-    font-size: 0.68rem;
-    font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 4px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 0.05rem 0.35rem;
+    border-radius: 3px;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+    white-space: nowrap;
   }
 
   .size-pill-orphan {
@@ -2072,6 +2127,45 @@
 
   .site-conflict-warning strong {
     color: #ffffff;
+  }
+
+  @media (max-width: 768px) {
+    .banner-card {
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 1rem;
+    }
+
+    .banner-actions {
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .tabs-nav-bar {
+      overflow-x: auto;
+      white-space: nowrap;
+      padding-bottom: 0.35rem;
+    }
+
+    .tab-btn {
+      padding: 0.5rem 0.85rem;
+      font-size: 0.8rem;
+    }
+
+    .data-table th, .data-table td {
+      padding: 0.65rem 0.6rem;
+    }
+
+    .action-btn-group {
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.35rem;
+    }
+
+    .btn-backup, .btn-action-delete, .btn-action-download {
+      padding: 0.3rem 0.55rem;
+      font-size: 0.72rem;
+    }
   }
 
   /* Utilidades */
