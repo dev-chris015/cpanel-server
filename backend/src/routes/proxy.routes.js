@@ -307,7 +307,59 @@ export const getNginxTarget = async (dockerInstance = docker) => {
  * lo ejecuta dentro del contenedor Docker de Nginx.
  */
 export const testNginxConfig = async () => {
-  // 1. Probar localmente
+  // 1. Probar en contenedor Docker de Nginx si está en ejecución
+  try {
+    const target = await getNginxTarget(docker);
+
+    if (target.container && target.isRunning) {
+      const execInstance = await target.container.exec({
+        Cmd: ['nginx', '-t'],
+        AttachStdout: true,
+        AttachStderr: true,
+        Tty: true
+      });
+
+      const stream = await execInstance.start({ Tty: true });
+      let output = '';
+
+      await new Promise((resolve) => {
+        stream.on('data', (chunk) => {
+          output += chunk.toString('utf8');
+        });
+        stream.on('end', resolve);
+        stream.on('error', () => resolve());
+      });
+
+      const inspectData = await execInstance.inspect();
+      const cleanOutput = output.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
+
+      if (inspectData.ExitCode === 0) {
+        return {
+          success: true,
+          output: cleanOutput,
+          method: 'docker'
+        };
+      } else {
+        return {
+          success: false,
+          error: cleanOutput || 'Fallo en la prueba de sintaxis (nginx -t) dentro del contenedor.',
+          output: cleanOutput,
+          method: 'docker'
+        };
+      }
+    } else if (target.status === 'stopped') {
+      return {
+        success: false,
+        error: target.message,
+        output: `Contenedor "${target.name}" detenido.`,
+        method: 'docker'
+      };
+    }
+  } catch (dockerErr) {
+    console.warn('[Proxy] Aviso al validar sintaxis de Nginx en Docker:', dockerErr.message);
+  }
+
+  // 2. Probar localmente si está disponible
   try {
     const { stdout, stderr } = await execAsync('nginx -t');
     return {
@@ -319,7 +371,7 @@ export const testNginxConfig = async () => {
     const isNotFound = localErr.code === 127 ||
       (localErr.message && (localErr.message.includes('not found') || localErr.message.includes('ENOENT')));
 
-    // Si nginx existe pero falló la sintaxis
+    // Si nginx existe localmente pero falló la sintaxis
     if (!isNotFound) {
       const errText = (localErr.stderr || localErr.stdout || localErr.message).trim();
       return {
@@ -329,71 +381,12 @@ export const testNginxConfig = async () => {
         method: 'local'
       };
     }
-  }
 
-  // 2. Probar en contenedor Docker de Nginx
-  try {
-    const target = await getNginxTarget(docker);
-
-    if (!target.container || !target.isRunning) {
-      if (target.status === 'stopped') {
-        return {
-          success: false,
-          error: target.message,
-          output: `Contenedor "${target.name}" detenido.`,
-          method: 'docker'
-        };
-      }
-      // Entorno de desarrollo o pruebas sin Nginx activo
-      return {
-        success: true,
-        simulated: true,
-        output: `Prueba sintáctica simulada: Nginx no disponible en este entorno (${target.message})`,
-        method: 'simulated'
-      };
-    }
-
-    const execInstance = await target.container.exec({
-      Cmd: ['nginx', '-t'],
-      AttachStdout: true,
-      AttachStderr: true,
-      Tty: true
-    });
-
-    const stream = await execInstance.start({ Tty: true });
-    let output = '';
-
-    await new Promise((resolve) => {
-      stream.on('data', (chunk) => {
-        output += chunk.toString('utf8');
-      });
-      stream.on('end', resolve);
-      stream.on('error', () => resolve());
-    });
-
-    const inspectData = await execInstance.inspect();
-    const cleanOutput = output.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
-
-    if (inspectData.ExitCode === 0) {
-      return {
-        success: true,
-        output: cleanOutput,
-        method: 'docker'
-      };
-    } else {
-      return {
-        success: false,
-        error: cleanOutput || 'Fallo en la prueba de sintaxis (nginx -t) dentro del contenedor.',
-        output: cleanOutput,
-        method: 'docker'
-      };
-    }
-  } catch (dockerErr) {
-    console.warn('nginx -t no pudo ejecutarse directamente ni en contenedor:', dockerErr.message);
+    // Entorno de desarrollo o pruebas sin Nginx activo
     return {
       success: true,
       simulated: true,
-      output: `Prueba sintáctica simulada: entorno sin Nginx activo (${dockerErr.message})`,
+      output: 'Prueba sintáctica simulada: Nginx no disponible en este entorno',
       method: 'simulated'
     };
   }
@@ -417,7 +410,69 @@ export const reloadNginx = async ({ skipTest = false } = {}) => {
     }
   }
 
-  // 2. Recargar localmente si está disponible
+  // 2. Si hay un contenedor Docker de Nginx en ejecución, priorizar la recarga dentro del contenedor
+  try {
+    const target = await getNginxTarget(docker);
+
+    if (target.container && target.isRunning) {
+      // 2.a Intentar recarga estándar con 'nginx -s reload' dentro del contenedor de Nginx
+      const execInstance = await target.container.exec({
+        Cmd: ['nginx', '-s', 'reload'],
+        AttachStdout: true,
+        AttachStderr: true,
+        Tty: true
+      });
+
+      const stream = await execInstance.start({ Tty: true });
+      let output = '';
+      await new Promise((resolve) => {
+        stream.on('data', (chunk) => { output += chunk.toString('utf8'); });
+        stream.on('end', resolve);
+        stream.on('error', () => resolve());
+      });
+
+      const inspectData = await execInstance.inspect();
+      const cleanOutput = output.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
+
+      if (inspectData.ExitCode === 0) {
+        return {
+          success: true,
+          output: cleanOutput || 'Nginx recargado exitosamente sin cortes de servicio.',
+          method: 'docker'
+        };
+      }
+
+      // 2.b Fallback: Si 'nginx -s reload' falló (ej. por archivo pid faltante en alpine),
+      // enviar señal directa SIGHUP (PID 1) al contenedor de Nginx
+      try {
+        await target.container.kill({ signal: 'HUP' });
+        return {
+          success: true,
+          output: (cleanOutput ? `${cleanOutput}\n` : '') + 'Nginx recargado exitosamente mediante señal SIGHUP al proceso maestro.',
+          method: 'docker-signal'
+        };
+      } catch (killErr) {
+        return {
+          success: false,
+          error: cleanOutput || killErr.message || 'Error al ejecutar recarga de Nginx en el contenedor.',
+          output: cleanOutput,
+          method: 'docker'
+        };
+      }
+    } else if (target.status === 'stopped') {
+      return {
+        success: false,
+        error: target.message,
+        output: `Contenedor "${target.name}" detenido.`,
+        method: 'docker'
+      };
+    }
+  } catch (dockerErr) {
+    // Si Docker falla inesperadamente, intentar fallback local
+    console.warn('[Proxy] Aviso al recargar Nginx en Docker:', dockerErr.message);
+  }
+
+  // 3. Fallback: Recargar localmente solo si el proceso de Nginx está corriendo localmente
   try {
     const { stdout, stderr } = await execAsync('nginx -s reload');
     return {
@@ -426,90 +481,28 @@ export const reloadNginx = async ({ skipTest = false } = {}) => {
       method: 'local'
     };
   } catch (localErr) {
-    const isNotFound = localErr.code === 127 ||
-      (localErr.message && (localErr.message.includes('not found') || localErr.message.includes('ENOENT')));
-    if (!isNotFound) {
-      const errText = (localErr.stderr || localErr.stdout || localErr.message).trim();
-      return {
-        success: false,
-        error: errText,
-        output: errText,
-        method: 'local'
-      };
-    }
-  }
+    const msg = (localErr.stderr || localErr.stdout || localErr.message || '').trim();
+    // Si Nginx no está corriendo localmente (ej: invalid PID number o not running)
+    const isNotRunningLocally = localErr.code === 127 ||
+      msg.includes('not found') ||
+      msg.includes('ENOENT') ||
+      msg.includes('invalid PID number') ||
+      msg.includes('No such process');
 
-  // 3. Recargar en contenedor Docker
-  try {
-    const target = await getNginxTarget(docker);
-
-    if (!target.container || !target.isRunning) {
-      if (target.status === 'stopped') {
-        return {
-          success: false,
-          error: target.message,
-          output: `Contenedor "${target.name}" detenido.`,
-          method: 'docker'
-        };
-      }
+    if (isNotRunningLocally) {
       return {
         success: true,
         simulated: true,
-        output: `Recarga simulada: ${target.message}`,
+        output: 'Recarga completada (entorno sin daemon local activo de Nginx)',
         method: 'simulated'
       };
     }
 
-    // 3.a Intentar recarga estándar con 'nginx -s reload'
-    const execInstance = await target.container.exec({
-      Cmd: ['nginx', '-s', 'reload'],
-      AttachStdout: true,
-      AttachStderr: true,
-      Tty: true
-    });
-
-    const stream = await execInstance.start({ Tty: true });
-    let output = '';
-    await new Promise((resolve) => {
-      stream.on('data', (chunk) => { output += chunk.toString('utf8'); });
-      stream.on('end', resolve);
-      stream.on('error', () => resolve());
-    });
-
-    const inspectData = await execInstance.inspect();
-    const cleanOutput = output.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
-
-    if (inspectData.ExitCode === 0) {
-      return {
-        success: true,
-        output: cleanOutput || 'Nginx recargado exitosamente sin cortes de servicio.',
-        method: 'docker'
-      };
-    }
-
-    // 3.b Fallback: Si 'nginx -s reload' falló (ej. por archivo pid faltante en alpine),
-    // enviar señal directa SIGHUP (PID 1) al contenedor de Nginx
-    try {
-      await target.container.kill({ signal: 'HUP' });
-      return {
-        success: true,
-        output: (cleanOutput ? `${cleanOutput}\n` : '') + 'Nginx recargado exitosamente mediante señal SIGHUP al proceso maestro.',
-        method: 'docker-signal'
-      };
-    } catch (killErr) {
-      return {
-        success: false,
-        error: cleanOutput || killErr.message || 'Error al ejecutar recarga de Nginx en el contenedor.',
-        output: cleanOutput,
-        method: 'docker'
-      };
-    }
-  } catch (dockerErr) {
     return {
-      success: true,
-      simulated: true,
-      output: `Recarga simulada: ${dockerErr.message}`,
-      method: 'simulated'
+      success: false,
+      error: msg,
+      output: msg,
+      method: 'local'
     };
   }
 };
@@ -1538,49 +1531,16 @@ export const createOrUpdateVHost = async (req, res) => {
     }
 
     // Generar configuración con hasSsl y resolver 127.0.0.11 en ambos bloques
-    const isSslRequested = Boolean(hasSsl === true || hasSsl === 'true');
+    // Si ya existe un certificado en disco para este dominio, se puede activar SSL;
+    // de lo contrario, se crea inicialmente en HTTP (puerto 80 con endpoint ACME)
+    // para que el usuario pueda emitir el certificado sin conflictos ni bloqueos.
     const existingCert = checkCertificateExists(cleanDomain);
-
-    // Si se solicitó SSL pero el certificado no existe aún en disco, auto-emitirlo
-    if (isSslRequested && !existingCert.exists) {
-      console.log(`[Proxy] SSL activado y certificado no existente para ${cleanDomain}. Iniciando emisión atómica con rollback...`);
-      const issuanceResult = await executeCertificateIssuanceWorkflow({
-        domain: cleanDomain,
-        target,
-        email: req.body.email || process.env.CERTBOT_EMAIL || `admin@${cleanDomain}`,
-        dockerInstance: docker
-      });
-
-      if (!issuanceResult.success) {
-        return res.status(issuanceResult.httpStatus || (issuanceResult.phase === 1 ? 500 : 502)).json({
-          success: false,
-          error: issuanceResult.error || `No se pudo emitir el certificado SSL automáticamente para '${cleanDomain}'. Verifica que el DNS apunte a este servidor.`,
-          details: issuanceResult.details,
-          certbotOutput: issuanceResult.certbotOutput,
-          statusCode: issuanceResult.statusCode
-        });
-      }
-
-      return res.status(201).json({
-        success: true,
-        message: `Virtual Host para ${cleanDomain} configurado y certificado SSL emitido exitosamente.`,
-        data: {
-          domain: cleanDomain,
-          hasSsl: true,
-          target,
-          certPath: issuanceResult.certPath,
-          certbotOutput: issuanceResult.certbotOutput,
-          executionMethod: issuanceResult.executionMethod,
-          testDetails: issuanceResult.step3?.testDetails,
-          reloadDetails: issuanceResult.step3?.reloadDetails
-        }
-      });
-    }
+    const hasSslConfig = Boolean((hasSsl === true || hasSsl === 'true') && existingCert.exists);
 
     const configContent = generateVHostConfig({
       domain,
       target,
-      hasSsl: isSslRequested,
+      hasSsl: hasSslConfig,
       sslCertPath: sslCertPath || existingCert.certPath,
       sslKeyPath: sslKeyPath || existingCert.keyPath,
       resolver: customResolver || '127.0.0.11 valid=10s ipv6=off'
@@ -1607,7 +1567,7 @@ export const createOrUpdateVHost = async (req, res) => {
       message: result.message,
       data: {
         domain,
-        hasSsl: Boolean(hasSsl === true || hasSsl === 'true'),
+        hasSsl: hasSslConfig,
         target,
         config: configContent,
         testDetails: result.testDetails,

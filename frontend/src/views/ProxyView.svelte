@@ -242,12 +242,11 @@
     try {
       const res = await api.post('/proxy/vhosts', {
         domain: cleanDomain,
-        target: cleanTarget,
-        hasSsl: Boolean(hasSsl)
+        target: cleanTarget
       });
 
       if (res && res.success) {
-        successNotice = `Virtual Host ${cleanDomain} configurado y verificado con éxito.`;
+        successNotice = `Virtual Host ${cleanDomain} configurado y verificado con éxito en puerto 80 (listo para SSL).`;
         // Limpiar formulario
         domain = '';
         selectedContainer = '';
@@ -571,30 +570,17 @@
         {/if}
       </div>
 
-      <!-- Toggle Switch: Habilitar SSL Let's Encrypt -->
-      <div class="ssl-switch-box">
-        <div class="ssl-switch-meta">
-          <div class="switch-title-row">
-            {#if hasSsl}
-              <ShieldCheck size={18} class="text-green" />
-            {:else}
-              <Shield size={18} class="text-slate" />
-            {/if}
-            <span class="switch-title">Habilitar SSL Let's Encrypt (HTTPS 443)</span>
-          </div>
-          <p class="switch-desc">
-            {#if hasSsl}
-              <strong class="text-green">SSL Activado:</strong> Genera redirección 301 (HTTP &rarr; HTTPS) y bloque SSL en el puerto 443 con cifrados modernos.
-            {:else}
-              <strong class="text-yellow">HTTP Inicial (Recomendado para certificados nuevos):</strong> Expone el puerto 80 con desafío ACME (<code class="font-mono">/.well-known/acme-challenge/</code>) para permitir la emisión inicial del certificado Let's Encrypt sin romper <code class="font-mono">nginx -t</code>.
-            {/if}
+      <!-- Nota informativa sobre el flujo HTTP inicial y emisión de SSL -->
+      <div class="http-info-box">
+        <div class="http-info-icon">
+          <ShieldAlert size={18} class="text-yellow" />
+        </div>
+        <div class="http-info-text">
+          <span class="http-info-title">Configuración HTTP en Puerto 80 con desafío ACME</span>
+          <p class="http-info-desc">
+            El Virtual Host se creará inicialmente en el puerto 80 con la ruta <code class="font-mono">/.well-known/acme-challenge/</code> lista. Una vez guardado, podrás emitir el certificado SSL Let's Encrypt con un clic desde la tabla de Virtual Hosts.
           </p>
         </div>
-
-        <label class="toggle-switch">
-          <input type="checkbox" bind:checked={hasSsl} />
-          <span class="toggle-slider"></span>
-        </label>
       </div>
 
       <!-- Preview del Upstream y Botón Enviar -->
@@ -1085,85 +1071,39 @@
     color: var(--text-muted, #a1a1aa);
   }
 
-  /* SSL Toggle Box */
-  .ssl-switch-box {
+  /* HTTP Info Box */
+  .http-info-box {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--surface-muted, #18181b);
-    border: 1px solid var(--card-border, #222225);
+    align-items: flex-start;
+    background: rgba(234, 179, 8, 0.05);
+    border: 1px solid rgba(234, 179, 8, 0.2);
     border-radius: 10px;
-    padding: 1rem 1.25rem;
-    gap: 1rem;
+    padding: 0.85rem 1.1rem;
+    gap: 0.85rem;
   }
 
-  .ssl-switch-meta {
+  .http-info-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .http-info-text {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.25rem;
   }
 
-  .switch-title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+  .http-info-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #facc15;
   }
 
-  .switch-title {
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: var(--text-main, #f4f4f5);
-  }
-
-  .switch-desc {
+  .http-info-desc {
     margin: 0;
-    font-size: 0.8rem;
+    font-size: 0.785rem;
     color: var(--text-muted, #a1a1aa);
     line-height: 1.4;
-  }
-
-  /* Switch Toggle Styling */
-  .toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 48px;
-    height: 26px;
-    flex-shrink: 0;
-  }
-
-  .toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-
-  .toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background-color: var(--card-border, #222225);
-    border-radius: 9999px;
-    transition: 0.3s;
-  }
-
-  .toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 20px;
-    width: 20px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    border-radius: 50%;
-    transition: 0.3s;
-  }
-
-  .toggle-switch input:checked + .toggle-slider {
-    background-color: #10b981;
-  }
-
-  .toggle-switch input:checked + .toggle-slider:before {
-    transform: translateX(22px);
   }
 
   /* Form Actions */
