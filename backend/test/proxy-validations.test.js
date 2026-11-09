@@ -14,7 +14,9 @@ import {
   reloadNginxHandler,
   resolveCertbotHostPaths,
   ensureImageExists,
-  runEphemeralCertbotContainer
+  runEphemeralCertbotContainer,
+  generateVHostConfig,
+  executeCertificateIssuanceWorkflow
 } from '../src/routes/proxy.routes.js';
 
 describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => {
@@ -589,5 +591,121 @@ describe('Suite de pruebas automatizadas: Validación de Proxy y Docker', () => 
       '--non-interactive',
       '--keep-until-expiring'
     ]);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Prueba 10: Plantilla VHost Estandarizada y Recarga Segura de Nginx
+  // ---------------------------------------------------------------------------
+  test('Prueba 10: Verificación de plantilla VHost HTTP y HTTPS estandarizada', () => {
+    // 10.a Plantilla con SSL habilitado
+    const sslVHost = generateVHostConfig({
+      domain: 'app.example.com',
+      target: 'my-container:8080',
+      hasSsl: true,
+      sslCertPath: '/etc/letsencrypt/live/app.example.com/fullchain.pem',
+      sslKeyPath: '/etc/letsencrypt/live/app.example.com/privkey.pem'
+    });
+
+    // Validar Bloque HTTP
+    assert.match(sslVHost, /listen 80;/);
+    assert.match(sslVHost, /listen \[::\]:80;/);
+    assert.match(sslVHost, /resolver 127\.0\.0\.11 valid=10s ipv6=off;/);
+    assert.match(sslVHost, /location \/\.well-known\/acme-challenge\/\s*\{[\s\S]*?root \/var\/www\/certbot;/);
+    assert.match(sslVHost, /return 301 https:\/\/\$host\$request_uri;/);
+
+    // Validar Bloque HTTPS
+    assert.match(sslVHost, /listen 443 ssl;/);
+    assert.match(sslVHost, /listen \[::\]:443 ssl;/);
+    assert.match(sslVHost, /http2 on;/);
+    assert.match(sslVHost, /ssl_certificate \/etc\/letsencrypt\/live\/app\.example\.com\/fullchain\.pem;/);
+    assert.match(sslVHost, /ssl_certificate_key \/etc\/letsencrypt\/live\/app\.example\.com\/privkey\.pem;/);
+    assert.match(sslVHost, /ssl_protocols TLSv1\.2 TLSv1\.3;/);
+    assert.match(sslVHost, /ssl_prefer_server_ciphers on;/);
+
+    // Validar Proxy Pass dinámico, WebSockets y headers
+    assert.match(sslVHost, /set \$backend_upstream "http:\/\/my-container:8080";/);
+    assert.match(sslVHost, /proxy_pass \$backend_upstream;/);
+    assert.match(sslVHost, /proxy_set_header Upgrade \$http_upgrade;/);
+    assert.match(sslVHost, /proxy_set_header Connection "upgrade";/);
+    assert.match(sslVHost, /proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;/);
+    assert.match(sslVHost, /proxy_set_header X-Forwarded-Proto \$scheme;/);
+
+    // 10.b Plantilla HTTP estándar (sin SSL)
+    const httpVHost = generateVHostConfig({
+      domain: 'plain.example.com',
+      target: 'http://my-web:80',
+      hasSsl: false
+    });
+
+    assert.match(httpVHost, /listen 80;/);
+    assert.match(httpVHost, /listen \[::\]:80;/);
+    assert.match(httpVHost, /resolver 127\.0\.0\.11 valid=10s ipv6=off;/);
+    assert.match(httpVHost, /location \/\.well-known\/acme-challenge\/\s*\{[\s\S]*?root \/var\/www\/certbot;/);
+    assert.doesNotMatch(httpVHost, /listen 443/);
+    assert.doesNotMatch(httpVHost, /return 301 https/);
+    assert.match(httpVHost, /set \$backend_upstream "http:\/\/my-web:80";/);
+    assert.match(httpVHost, /proxy_pass \$backend_upstream;/);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Prueba 11: Orquestador Atómico con Rollback (executeCertificateIssuanceWorkflow)
+  // ---------------------------------------------------------------------------
+  test('Prueba 11: executeCertificateIssuanceWorkflow y Rollback ante fallo de Certbot', async () => {
+    const vhostDomain = 'rollback-test.example.com';
+    const vhostFile = path.join(tempVHostsDir, `${vhostDomain}.conf`);
+    const initialConfig = '# Configuración Previa Saludable\nserver { listen 80; server_name rollback-test.example.com; }';
+
+    // 11.a Estado inicial: archivo previo existente
+    fs.writeFileSync(vhostFile, initialConfig, 'utf8');
+
+    // Emular contenedor certbot que falla (ej: error DNS NXDOMAIN)
+    const mockFailingDocker = {
+      getImage: () => ({ inspect: async () => ({ Id: 'sha256:dummy' }) }),
+      createContainer: async () => ({
+        attach: async () => ({
+          on: (event, handler) => {
+            if (event === 'data') {
+              handler(Buffer.from('DNS problem: NXDOMAIN looking up A for rollback-test.example.com\n'));
+            }
+          }
+        }),
+        start: async () => {},
+        wait: async () => ({ StatusCode: 1 })
+      }),
+      listContainers: async () => []
+    };
+
+    const failResult = await executeCertificateIssuanceWorkflow({
+      domain: vhostDomain,
+      target: 'http://test-upstream:80',
+      email: 'admin@rollback-test.example.com',
+      dockerInstance: mockFailingDocker
+    });
+
+    // Validar respuesta de error y estado HTTP
+    assert.equal(failResult.success, false);
+    assert.equal(failResult.httpStatus, 400); // 400 debido a fallo de DNS reportado por Certbot
+    assert.equal(failResult.statusCode, 1);
+    assert.match(failResult.certbotOutput, /NXDOMAIN/);
+
+    // Validar Rollback: el archivo previo debe haber sido restaurado íntegramente
+    assert.equal(fs.existsSync(vhostFile), true);
+    const restoredContent = fs.readFileSync(vhostFile, 'utf8');
+    assert.equal(restoredContent, initialConfig);
+
+    // 11.b Estado inicial: archivo no existía previamente (nuevo dominio)
+    fs.unlinkSync(vhostFile);
+    assert.equal(fs.existsSync(vhostFile), false);
+
+    const failNewResult = await executeCertificateIssuanceWorkflow({
+      domain: vhostDomain,
+      target: 'http://test-upstream:80',
+      email: 'admin@rollback-test.example.com',
+      dockerInstance: mockFailingDocker
+    });
+
+    assert.equal(failNewResult.success, false);
+    // Validar Rollback: el archivo temporal fue eliminado
+    assert.equal(fs.existsSync(vhostFile), false);
   });
 });
