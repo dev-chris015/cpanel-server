@@ -73,33 +73,67 @@
     return s === 'running';
   });
 
-  // Extraer host de un target upstream (ej. "app:80" -> "app")
-  function extractHostFromTarget(targetStr) {
-    if (!targetStr || typeof targetStr !== 'string') return '';
-    const clean = targetStr.trim().replace(/^https?:\/\//, '');
-    const host = clean.split(':')[0];
-    return host.toLowerCase();
+  // Extraer host y puerto de un target upstream (ej. "http://app:80/" -> host: "app", port: 80)
+  function extractHostAndPortFromTarget(targetStr) {
+    if (!targetStr || typeof targetStr !== 'string') return { host: '', port: null };
+    const clean = targetStr.trim().replace(/^https?:\/\//i, '').replace(/^\/+/, '');
+    const hostAndPort = clean.split('/')[0];
+    const parts = hostAndPort.split(':');
+    const host = parts[0].toLowerCase();
+    const port = parts.length > 1 ? (parseInt(parts[1], 10) || null) : null;
+    return { host, port };
   }
 
   // Cálculo Reactivo de Contenedores Asignados en caliente
-  $: assignedContainerMap = (() => {
-    const map = new Map();
+  $: assignedContainerData = (() => {
+    const hostMap = new Map();
+    const portMap = new Map();
+    const LOCAL_HOSTS = ['127.0.0.1', 'localhost', '0.0.0.0', 'host.docker.internal'];
+
     vhosts.forEach(vh => {
       if (vh.target) {
-        const host = extractHostFromTarget(vh.target);
+        const { host, port } = extractHostAndPortFromTarget(vh.target);
         if (host) {
-          map.set(host, vh);
+          hostMap.set(host, vh);
+        }
+        // Si el target apunta a localhost/127.0.0.1:puerto, registrar el puerto mapeado
+        if (LOCAL_HOSTS.includes(host) && port) {
+          portMap.set(port, vh);
         }
       }
     });
-    return map;
+    return { hostMap, portMap };
   })();
 
+  // Función para evaluar si un contenedor ya tiene dominio asignado
+  function isContainerAssigned(c, assigned) {
+    const { hostMap, portMap } = assigned;
+    
+    // 1. Validar por nombre del contenedor
+    const rawNames = [];
+    if (c.name) rawNames.push(c.name);
+    if (Array.isArray(c.Names)) rawNames.push(...c.Names);
+    if (c.Id) rawNames.push(c.Id.slice(0, 12));
+
+    for (const raw of rawNames) {
+      const cleanName = raw.replace(/^\//, '').toLowerCase();
+      if (hostMap.has(cleanName)) return true;
+    }
+
+    // 2. Validar si el target del vhost apunta a la IP o puerto público publicado de este contenedor
+    if (portMap.size > 0 && Array.isArray(c.Ports)) {
+      for (const p of c.Ports) {
+        if (p.PublicPort && portMap.has(p.PublicPort)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   // Filtrado en menú desplegable de contenedores disponibles (sin dominio asignado)
-  $: availableContainers = runningContainers.filter(c => {
-    const cName = (c.name || c.Names?.[0] || '').replace(/^\//, '') || c.Id?.slice(0, 12);
-    return !assignedContainerMap.has(cName.toLowerCase()) && !assignedContainerMap.has(cName);
-  });
+  $: availableContainers = runningContainers.filter(c => !isContainerAssigned(c, assignedContainerData));
 
   // Conteo de contenedores asignados que se ocultan en la lista
   $: assignedCount = runningContainers.length - availableContainers.length;
